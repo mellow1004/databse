@@ -8,6 +8,7 @@ export default function Home() {
       <a href="/admin/intake/batches" className="mt-2 text-blue-600 underline">View import batches</a>
       <a href="/admin/dedup" className="mt-2 text-blue-600 underline">Review duplicate candidates (Module 2 — Dedup)</a>
       <a href="/admin/conflicts" className="mt-2 text-blue-600 underline">Resolve enrichment conflicts (Module 3)</a>
+      <a href="/admin/suppressions" className="mt-2 text-blue-600 underline">Manage suppressions (Module 4)</a>
     </main>
   );
 }
