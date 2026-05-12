@@ -6,21 +6,45 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "prisma db seed",
+    "test:parser": "tsx scripts/test-parser.ts",
+    "test:intake": "tsx scripts/test-intake.ts",
+    "test:identity": "tsx scripts/test-identity.ts",
+    "test:promotion": "tsx scripts/test-promotion.ts",
+    "test:dedup": "tsx scripts/test-dedup.ts",
+    "test:providers": "tsx scripts/test-providers.ts",
+    "test:verification": "tsx scripts/test-verification.ts",
+    "test:enrichment": "tsx scripts/test-enrichment.ts",
+    "test:gates": "tsx scripts/test-gates.ts",
+    "test:suppression": "tsx scripts/test-suppression.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "next": "16.2.6",
+    "papaparse": "^5.5.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.4.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "prisma": "^6.19.3",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

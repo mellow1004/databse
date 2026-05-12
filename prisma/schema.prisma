@@ -1,0 +1,564 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// IDENTITY LAYER (PRD Section 8, tables 1-5 + clients root)
+// ============================================================
+
+/// Workspace isolation root. Every other table joins via clientId.
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  persons                     Person[]
+  companies                   Company[]
+  contacts                    Contact[]
+  domainAliases               DomainAlias[]
+  contactCompanyRelationships ContactCompanyRelationship[]
+
+  @@map("clients")
+}
+
+/// Persistent human identity. Survives job changes.
+/// LinkedIn URL is the primary identity anchor; email/phone are secondary.
+model Person {
+  id             String   @id @default(cuid())
+  clientId       String
+  linkedinUrl    String?
+  primaryEmail   String?
+  primaryPhone   String?
+  fullName       String
+  firstName      String?
+  lastName       String?
+  // Inferred attributes (logged separately per AI Act Article 10)
+  inferredGender String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  client   Client    @relation(fields: [clientId], references: [id])
+  contacts Contact[]
+
+  @@unique([clientId, linkedinUrl])
+  @@index([clientId])
+  @@index([primaryEmail])
+  @@map("persons")
+}
+
+/// Master company record. Canonical key is rootDomain.
+/// parentCompanyId enables subsidiary hierarchies.
+model Company {
+  id              String   @id @default(cuid())
+  clientId        String
+  rootDomain      String
+  legalName       String
+  parentCompanyId String?
+  industry        String?
+  country         String? // ISO 3166-1 alpha-2
+  headcountBand   String? // e.g. "1-10", "11-50", "51-200", "201-1000", "1000+"
+
+  /// If set, this company was merged into another company (mergedIntoId).
+  /// Soft-archived — kept for traceability and the 30-day rollback window (PRD Section 7).
+  /// Raw FK column (no Prisma relation) so the trail survives deletion of the surviving record.
+  mergedIntoId String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  client                      Client                       @relation(fields: [clientId], references: [id])
+  parent                      Company?                     @relation("CompanyHierarchy", fields: [parentCompanyId], references: [id])
+  subsidiaries                Company[]                    @relation("CompanyHierarchy")
+  domainAliases               DomainAlias[]
+  contacts                    Contact[]
+  contactCompanyRelationships ContactCompanyRelationship[]
+
+  @@unique([clientId, rootDomain])
+  @@index([clientId])
+  @@index([mergedIntoId])
+  @@map("companies")
+}
+
+/// Variant domains mapped to canonical company (regional sites, legacy domains, acquired brands).
+model DomainAlias {
+  id          String   @id @default(cuid())
+  clientId    String
+  companyId   String
+  aliasDomain String
+  aliasType   String // "regional" | "legacy" | "acquired_brand"
+  createdAt   DateTime @default(now())
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([clientId, aliasDomain])
+  @@index([companyId])
+  @@map("domain_aliases")
+}
+
+/// Role-at-company instance linked to a persistent personId.
+/// Job changes create a NEW contact row linked to the existing personId.
+model Contact {
+  id        String @id @default(cuid())
+  clientId  String
+  personId  String
+  companyId String
+
+  // Contact-level fields
+  email     String?
+  phone     String?
+  title     String?
+  seniority String? // "c_level" | "vp" | "director" | "manager" | "ic" | "other"
+
+  // Gate & state (full lifecycle managed by Module 4)
+  gateStatus       String  @default("gate_0") // "gate_0" | "gate_1" | "gate_2" | "gate_3"
+  campaignActive   Boolean @default(false) // runtime flag written by AI SDR platform
+  quarantineReason String? // null if not quarantined
+  lifecycleStage   String  @default("active") // "active" | "frozen" | "anonymised" | "legal_hold"
+
+  /// If set, this contact was merged into another contact (mergedIntoId).
+  /// Soft-archived — kept for traceability and the 30-day rollback window (PRD Section 7).
+  /// Raw FK column (no Prisma relation) so the trail survives deletion of the surviving record.
+  mergedIntoId String?
+
+  // Freshness & derived fields
+  freshnessLabel      String? // "fresh" | "aging" | "stale"
+  lastVerifiedAt      DateTime?
+  lastEnrichedAt      DateTime?
+  derivedFieldVersion String?
+
+  // Write-precedence tracking (PRD Section 7)
+  writeSource         String?
+  writePriority       Int?
+  manualOverrideUntil DateTime? // 30-day lock after Data Owner override
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client                      Client                       @relation(fields: [clientId], references: [id])
+  person                      Person                       @relation(fields: [personId], references: [id])
+  company                     Company                      @relation(fields: [companyId], references: [id])
+  contactCompanyRelationships ContactCompanyRelationship[]
+
+  @@index([clientId])
+  @@index([personId])
+  @@index([companyId])
+  @@index([gateStatus])
+  @@index([campaignActive])
+  @@index([mergedIntoId])
+  @@map("contacts")
+}
+
+/// Many-to-many between contacts and companies with role type + date ranges.
+/// A contact's "current employer" is derived from the active employee relationship
+/// with the most recent startDate. Job changes create new rows rather than mutating data.
+model ContactCompanyRelationship {
+  id        String    @id @default(cuid())
+  clientId  String
+  contactId String
+  companyId String
+  roleType  String // "employee" | "advisor" | "board_member" | "former_employee"
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([contactId])
+  @@index([companyId])
+  @@index([clientId, roleType])
+  @@map("contact_company_relationships")
+}
+
+// ============================================================
+// EVENT & LOG LAYER (PRD Section 8, tables 6, 7, 8, 9, 10, 13)
+// All tables are append-only. State changes on contacts/companies
+// always have a matching event row here (PRD Section 7).
+// ============================================================
+
+/// Full waterfall audit trail for every enrichment attempt.
+/// Records which provider was called, which fields filled, confidence, credits used.
+model EnrichmentLog {
+  id           String   @id @default(cuid())
+  clientId     String
+  contactId    String? // null if this was a company-level enrichment
+  companyId    String?
+  batchId      String // groups rows for rollback/recovery (PRD Section 7)
+  provider     String // "cognism" | "apollo" | "clay" | "lusha" | etc.
+  step         Int // position in waterfall (1, 2, 3, ...)
+  fieldsFilled String // JSON array of field names filled by this call
+  confidence   Float? // 0.0-1.0
+  rawResponse  String? // JSON blob of provider response (kept for replay/dispute)
+  status       String // "success" | "no_match" | "rate_limited" | "error" | "rolled_back"
+  errorMessage String?
+  creditsUsed  Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+  @@index([batchId])
+  @@index([contactId])
+  @@index([companyId])
+  @@index([provider, createdAt])
+  @@map("enrichment_log")
+}
+
+/// Email and phone verification events with classification and date.
+/// Used by the accuracy QA sampler and the 24-hour write-precedence rule.
+model Verification {
+  id               String   @id @default(cuid())
+  clientId         String
+  contactId        String
+  verificationType String // "email" | "phone"
+  provider         String // "millionverifier" | "bouncer" | "cognism_diamond"
+  status           String // "valid" | "invalid" | "risky" | "unknown" | "catch_all" | "disposable"
+  confidence       Float?
+  creditsUsed      Int      @default(1)
+  rawResponse      String?
+  batchId          String?
+  createdAt        DateTime @default(now())
+
+  @@index([clientId])
+  @@index([contactId])
+  @@index([batchId])
+  @@index([verificationType, status])
+  @@index([contactId, createdAt])
+  @@map("verifications")
+}
+
+/// Every gate transition with reason, actor, and timestamp.
+/// Reconstructs full lifecycle of any contact for dispute/audit.
+model GateStatusHistory {
+  id                  String   @id @default(cuid())
+  clientId            String
+  contactId           String
+  fromGate            String? // null on first entry into the model
+  toGate              String // "gate_0" | "gate_1" | "gate_2" | "gate_3" | "quarantine"
+  reason              String // "verification_complete" | "enrichment_promoted" | "bounce_detected" | "accuracy_failure" | "manual_promotion" | "dsar_request" | ...
+  actor               String // user id or "system"
+  derivedFieldVersion String? // version of the rules that produced this transition
+  createdAt           DateTime @default(now())
+
+  @@index([clientId])
+  @@index([contactId])
+  @@index([toGate, createdAt])
+  @@map("gate_status_history")
+}
+
+/// Survivorship log for every merge (contact-level or company-level).
+/// Records which record won, which got merged in, on which fields, and by whose authority.
+/// Backbone of the 30-day rollback window (PRD Section 7).
+model MergeHistory {
+  id             String   @id @default(cuid())
+  clientId       String
+  mergeType      String // "contact" | "company"
+  survivorId     String // id of the record that won
+  mergedFromId   String // id of the record that was merged in (and soft-archived)
+  fieldsResolved String // JSON map: { field: { winningValue, losingValue, source } }
+  reason         String
+  actor          String // Data Owner user id
+  batchId        String?
+  createdAt      DateTime @default(now())
+
+  @@index([clientId])
+  @@index([survivorId])
+  @@index([mergedFromId])
+  @@index([batchId])
+  @@map("merge_history")
+}
+
+/// Quarantined records with reason code, owner, and review state.
+/// Re-promotion requires Data Owner approval (PRD Module 4).
+model QuarantineLog {
+  id            String    @id @default(cuid())
+  clientId      String
+  contactId     String?
+  companyId     String?
+  reasonCode    String // "bounce" | "verification_failure" | "gdpr_request" | "manual_flag" | "accuracy_failure"
+  reasonDetail  String?
+  actor         String
+  reviewState   String    @default("pending") // "pending" | "reviewed" | "released" | "deleted"
+  releasedAt    DateTime?
+  releasedBy    String?
+  releaseReason String?
+  createdAt     DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([contactId])
+  @@index([companyId])
+  @@index([reviewState])
+  @@index([reasonCode])
+  @@map("quarantine_log")
+}
+
+/// One row per 90-day refresh cycle run. Records what was re-verified,
+/// what got downgraded, and the cost per cycle (PRD Section 9).
+model RefreshLog {
+  id                String    @id @default(cuid())
+  clientId          String
+  cycleNumber       Int
+  startedAt         DateTime
+  completedAt       DateTime?
+  status            String // "in_progress" | "completed" | "paused" | "failed"
+  recordsReVerified Int       @default(0)
+  recordsDowngraded Int       @default(0)
+  recordsAnonymised Int       @default(0)
+  recordsGapFilled  Int       @default(0)
+  providerAccuracy  String? // JSON: { provider: { sampled, correct, accuracyRate } }
+  costEstimate      Float? // EUR
+  notes             String?
+
+  @@index([clientId])
+  @@index([cycleNumber])
+  @@index([status])
+  @@map("refresh_log")
+}
+
+// ============================================================
+// GOVERNANCE & COMPLIANCE LAYER (PRD Section 8, tables 11, 12, 14-18)
+// Implements RBAC, GDPR/AI Act compliance, suppression policy,
+// tombstoning, and provider contract tracking (PRD Section 7).
+// ============================================================
+
+/// Three-scope suppression: global (all clients), client_level, domain_level.
+/// Reply-driven "stop" suppressions are written by the AI SDR platform and propagate immediately.
+/// Opt-outs (regulatory) are distinct from technical suppressions (bounce) and treated more conservatively.
+model Suppression {
+  id        String  @id @default(cuid())
+  scope     String // "global" | "client_level" | "domain_level"
+  clientId  String? // populated when scope = client_level
+  // Target identifiers — one is populated based on scope/use case
+  contactId String? // contact-level suppression
+  email     String? // email-level
+  domain    String? // domain-level (e.g. competitor or legal block)
+
+  reasonCode   String // "competitor" | "opt_out" | "stop_reply" | "legal_block" | "conflict_of_interest" | "bounce_repeated"
+  reasonDetail String?
+  owner        String // user id who created
+  source       String // "manual" | "ai_sdr_platform" | "import" | "regulatory"
+
+  // Cooling period for opt-outs (PRD Module 4 — distinct from technical suppression)
+  isOptOut                Boolean   @default(false)
+  coolingPeriodIndefinite Boolean   @default(true)
+  reviewRequiredBefore    DateTime?
+
+  // Release tracking — releases require Data Owner approval
+  releaseStatus String    @default("active") // "active" | "released"
+  releasedAt    DateTime?
+  releasedBy    String?
+  releaseReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scope])
+  @@index([clientId])
+  @@index([email])
+  @@index([domain])
+  @@index([contactId])
+  @@index([releaseStatus])
+  @@map("suppressions")
+}
+
+/// Hashed identifiers of hard-deleted records (GDPR Article 17).
+/// Checked at every import to prevent re-creation of deleted records.
+/// Retained indefinitely.
+model Tombstone {
+  id               String   @id @default(cuid())
+  hashType         String // "email_sha256" | "linkedin_url_sha256" | "phone_sha256"
+  hashValue        String // SHA-256 hash of the original identifier
+  originalClientId String? // for traceability only — not used for matching
+  deletionReason   String // "dsar_article_17" | "retention_lifecycle" | "manual_owner_request" | "regulatory_order"
+  deletionActor    String
+  createdAt        DateTime @default(now())
+
+  @@unique([hashType, hashValue])
+  @@index([hashType])
+  @@map("tombstones")
+}
+
+/// Platform users with role-based permissions (PRD Section 7 RBAC).
+/// Data Owner is sole writer to the master database.
+/// SDRs/Analysts have no direct DB access — they consume via the AI SDR platform.
+model User {
+  id                            String    @id @default(cuid())
+  email                         String    @unique
+  fullName                      String
+  role                          String // "data_owner" | "deputy_data_owner" | "gtme_ops_manager" | "project_manager" | "sdr" | "analyst"
+  clientId                      String? // null for cross-client roles (data_owner, gtme_ops_manager)
+  active                        Boolean   @default(true)
+  // AI Act Article 4 — AI literacy training requirement
+  aiLiteracyTrainingCompletedAt DateTime?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+
+  @@index([role])
+  @@index([clientId])
+  @@map("users")
+}
+
+/// RBAC matrix. Enforces who can read/write/approve what at which scope.
+/// Cross-client visibility is opt-in per role and never the default (PRD Section 7).
+model RolePermission {
+  id         String   @id @default(cuid())
+  role       String // matches User.role values
+  resource   String // "contact" | "company" | "suppression" | "audit_log" | "enrichment" | "merge" | "quarantine" | "dsar" | "schema"
+  action     String // "read" | "write" | "approve_bulk" | "trigger_enrichment" | "release_quarantine" | "export" | "rollback"
+  scope      String   @default("own_client") // "own_client" | "cross_client" | "global"
+  conditions String? // JSON: optional row-level conditions
+  createdAt  DateTime @default(now())
+
+  @@unique([role, resource, action, scope])
+  @@index([role])
+  @@map("role_permissions")
+}
+
+/// Every action on the platform. Backbone of GDPR/AI Act audit obligations.
+/// Bulk operations (>100 records) require Data Owner approval — recorded here.
+model AuditLog {
+  id              String   @id @default(cuid())
+  clientId        String?
+  actorUserId     String? // null for system actions
+  actorRole       String?
+  action          String // verb describing what happened
+  resourceType    String // "contact" | "company" | "suppression" | "merge" | "quarantine" | "enrichment_batch" | "dsar" | ...
+  resourceId      String?
+  batchId         String? // for bulk operations
+  recordsAffected Int      @default(1)
+  approvalGranted Boolean? // true when bulk op required and received Data Owner approval
+  approverUserId  String?
+  beforeState     String? // JSON snapshot/diff
+  afterState      String? // JSON snapshot/diff
+  sensitivityTier String? // "public" | "business_contact" | "personal" — personal-tier actions logged separately per PRD Section 8
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([clientId])
+  @@index([actorUserId])
+  @@index([resourceType, resourceId])
+  @@index([batchId])
+  @@index([action, createdAt])
+  @@index([sensitivityTier])
+  @@map("audit_log")
+}
+
+/// Provider/sub-processor records with SCCs, contract versions, transfer mechanisms.
+/// Required by PRD Section 7 for cross-border transfer documentation (Apollo, Clay, etc.).
+model IntegrationContract {
+  id              String @id @default(cuid())
+  providerName    String // "cognism" | "apollo" | "clay" | "lusha" | "millionverifier" | "bouncer"
+  providerType    String // "enrichment" | "email_verification" | "phone_verification"
+  contractVersion String
+
+  // GDPR & cross-border transfer (PRD Section 7)
+  dataProcessingAgreementSigned Boolean @default(false)
+  sccsInPlace                   Boolean @default(false) // Standard Contractual Clauses
+  transferMechanism             String? // "adequacy_decision" | "sccs" | "bcr" | "derogation"
+  transferImpactAssessmentRef   String? // pointer to TIA document
+
+  // AI Act sub-processor register
+  subProcessorRegisterUpdated DateTime?
+
+  // Operational config
+  status            String  @default("active") // "active" | "paused" | "terminated"
+  rateLimitConfig   String? // JSON: { requestsPerMinute, requestsPerDay, ... }
+  dailyCreditBudget Int?
+  primaryMarkets    String? // JSON array of ISO 3166-1 alpha-2 country codes (waterfall precedence by market)
+
+  // Lifecycle
+  effectiveFrom  DateTime
+  effectiveUntil DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerName, contractVersion])
+  @@index([providerName])
+  @@index([status])
+  @@map("integration_contracts")
+}
+
+// ============================================================
+// STAGING LAYER (PRD Section 6, Module 1)
+// Holds raw imported rows before standardisation + dedup (Phase 3).
+// Every staged row preserves the original CSV values as JSON for provenance.
+// ============================================================
+
+/// One row per import operation (CSV upload, vendor export, etc.).
+/// Records who uploaded what, when, and the row-level outcome summary.
+model ImportBatch {
+  id            String  @id @default(cuid())
+  clientId      String
+  fileName      String
+  fileSizeBytes Int
+  source        String // "crm_export" | "campaign_file" | "spreadsheet" | "vendor_export" | "manual"
+  sourceDetail  String? // e.g. "Salesforce Q1 export", "Cognism dump 2026-03"
+  uploadedBy    String // user id
+
+  // Row-level rollup (populated as rows are processed)
+  rowsTotal    Int @default(0)
+  rowsAccepted Int @default(0)
+  rowsRejected Int @default(0)
+  rowsPromoted Int @default(0) // moved from staging into contacts/companies (Phase 3)
+
+  status       String    @default("uploaded") // "uploaded" | "parsing" | "ready_for_review" | "promoting" | "completed" | "failed"
+  errorMessage String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  @@index([clientId])
+  @@index([status])
+  @@index([uploadedBy])
+  @@map("import_batches")
+}
+
+/// One row per CSV record. Holds the raw original values plus the
+/// outcome of intake (accepted, rejected with reason, or already promoted).
+/// `rawValues` stores the original CSV row exactly as parsed (JSON object).
+model StagingRecord {
+  id        String @id @default(cuid())
+  clientId  String
+  batchId   String
+  rowNumber Int // 1-indexed line number within the source CSV
+
+  // Original values as parsed from CSV (JSON object: { columnName: value })
+  rawValues String
+
+  // Normalised candidate values (populated by parser — Step 2.2)
+  candidateEmail       String?
+  candidateLinkedinUrl String?
+  candidatePhone       String?
+  candidateFullName    String?
+  candidateCompanyName String?
+  candidateDomain      String?
+  candidateTitle       String?
+  candidateCountry     String?
+
+  // Intake outcome
+  status          String  @default("pending") // "pending" | "accepted" | "rejected" | "promoted"
+  rejectionReason String? // "tombstoned_email" | "tombstoned_linkedin" | "missing_required_fields" | "validation_failed" | "duplicate_in_batch"
+  rejectionDetail String?
+
+  // Promotion link (populated in Phase 3 when row moves to contacts)
+  promotedContactId String?
+  promotedAt        DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([batchId])
+  @@index([status])
+  @@index([batchId, rowNumber])
+  @@map("staging_records")
+}

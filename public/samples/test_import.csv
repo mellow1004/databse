@@ -1,0 +1,15 @@
+email,first_name,last_name,linkedin_url,phone,title,company,domain,country
+anna.lindberg@northwave.io,Anna,Lindberg,https://www.linkedin.com/in/anna-lindberg-demo/,+46701234001,VP Marketing,Northwave,northwave.io,SE
+oscar.berg@nordicfinance.com,Oscar,Berg,linkedin.com/in/oscar-berg-demo,+46701234002,Head of Sales,Nordic Finance,nordicfinance.com,SE
+mei.tan@brightlabs.co,Mei,Tan,https://linkedin.com/in/mei-tan-demo,,Director of Product,Brightlabs,brightlabs.co,SG
+james.oconnor@northwave.io,James,O'Connor,www.linkedin.com/in/james-oconnor-demo,+44207001234,CTO,Northwave,northwave.io,GB
+ANNA.LINDBERG@NORTHWAVE.IO,Anna,Lindberg,https://www.linkedin.com/in/anna-lindberg-demo/,+46701234001,VP Marketing,Northwave,northwave.io,SE
+sara.kowalski@brightlabs.co,Sara,Kowalski,linkedin.com/in/sara-kowalski-demo,,Engineering Manager,Brightlabs,brightlabs.co,PL
+deleted.john@example-demo.com,John,Removed,https://linkedin.com/in/john-removed-demo,,Marketing Lead,Example Demo,example-demo.com,US
+emma.weiss@nordicfinance.com,Emma,Weiss,https://www.linkedin.com/in/deleted-jane-demo/,+46701234003,CFO,Nordic Finance,nordicfinance.com,DE
+not-an-email,Carl,Andersson,linkedin.com/in/carl-andersson-demo,,Sales Rep,Example Corp,example.com,SE
+,Lisa,Holm,,,,Product Manager,Brightlabs,brightlabs.co,SE
+nameless@orphan-demo.com,,,linkedin.com/in/nameless-orphan-demo,,Analyst,Orphan Demo,orphan-demo.com,SE
+mei.tan@brightlabs.co,Mei,Tan,linkedin.com/in/mei-tan-demo,,Director of Product,Brightlabs,brightlabs.co,SG
+fatima.haidari@northwave.io,Fatima,Haidari,linkedin.com/in/fatima-haidari-demo,+46701234004,Product Marketing,Northwave,northwave.io,AF
+luca.rossi@brightlabs.co,Luca,Rossi,linkedin.com/in/luca-rossi-demo,+390123456789,Solutions Architect,Brightlabs,brightlabs.co,ITALY
