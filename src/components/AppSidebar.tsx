@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Layers,
   Lock,
+  Radio,
   Shield,
   Upload,
   User,
@@ -33,6 +34,7 @@ export function AppSidebar() {
   const isSuppressions = pathname.startsWith("/admin/suppressions");
   const isQuarantine = pathname.startsWith("/admin/quarantine");
   const isAccuracy = pathname.startsWith("/admin/accuracy");
+  const isPlatformSim = pathname.startsWith("/admin/platform-sim");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -96,6 +98,19 @@ export function AppSidebar() {
           >
             <AlertTriangle size={16} aria-hidden />
             Resolve conflicts
+          </Link>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Module 5 — AI SDR Integration
+          </p>
+          <Link
+            href="/admin/platform-sim"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isPlatformSim)}`}
+          >
+            <Radio size={16} aria-hidden />
+            Platform simulator
           </Link>
         </div>
 

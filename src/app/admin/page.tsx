@@ -2,14 +2,17 @@ import {
   AlertTriangle,
   Award,
   Lock,
+  Radio,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { db } from "@/lib/db";
 
@@ -222,6 +225,26 @@ export default async function AdminDashboardPage() {
         </p>
       </div>
       <Separator />
+
+      <Card className="border-primary/20 bg-primary/5 shadow-sm">
+        <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <Radio className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+            <div>
+              <p className="text-sm font-medium text-slate-900">
+                New: AI SDR Platform Simulator
+              </p>
+              <p className="text-sm text-slate-600">
+                Demonstrate event-driven flows (targeting, campaign assignment, bounces,
+                replies) against the master database in real time.
+              </p>
+            </div>
+          </div>
+          <Button variant="default" size="sm" className="shrink-0 sm:self-center" asChild>
+            <Link href="/admin/platform-sim">Open simulator</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="shadow-sm">

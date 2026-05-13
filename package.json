@@ -20,7 +20,8 @@
     "test:verification": "tsx scripts/test-verification.ts",
     "test:enrichment": "tsx scripts/test-enrichment.ts",
     "test:gates": "tsx scripts/test-gates.ts",
-    "test:suppression": "tsx scripts/test-suppression.ts"
+    "test:suppression": "tsx scripts/test-suppression.ts",
+    "test:ai-sdr": "tsx scripts/test-ai-sdr.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
