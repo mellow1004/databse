@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { faker } from "@faker-js/faker";
 import { createHash } from "node:crypto";
 import { hashEmail, hashLinkedinUrl } from "@/lib/hashing";
@@ -101,6 +101,7 @@ async function wipe() {
   await db.suppression.deleteMany();
   await db.refreshLog.deleteMany();
   await db.quarantineLog.deleteMany();
+  await db.accuracySample.deleteMany();
   await db.mergeHistory.deleteMany();
   await db.gateStatusHistory.deleteMany();
   await db.verification.deleteMany();
@@ -330,7 +331,7 @@ function makeLinkedinUrl(firstName: string, lastName: string): string {
   return `https://www.linkedin.com/in/${slug}-${linkedinSeq}`;
 }
 
-type ContactInsert = Parameters<typeof db.contact.createMany>[0]["data"] extends readonly (infer U)[] ? U : never;
+type ContactInsert = Prisma.ContactCreateManyInput;
 
 async function seedPersonsAndContacts(client: SeededClient, companies: SeededCompany[]) {
   // ---- Persons ----
@@ -711,6 +712,7 @@ async function seedScenarios(
   const allContacts: SeededContactRef[] = [];
   for (const list of contactsByClient.values()) allContacts.push(...list);
   const conflictTargets = faker.helpers.arrayElements(allContacts, 4);
+  const conflictIds = new Set(conflictTargets.map((c) => c.id));
   const conflictRows: {
     id: string; clientId: string; contactId: string | null; companyId: string | null; batchId: string;
     provider: string; step: number; fieldsFilled: string; confidence: number; rawResponse: string | null;
@@ -754,6 +756,79 @@ async function seedScenarios(
   if (conflictRows.length) await db.enrichmentLog.createMany({ data: conflictRows });
   enrichmentLogs += conflictRows.length;
 
+  // --- 3b. Gate-2 enrichment stubs for accuracy QA sampling (per client, capped) ---
+  const gate2ForAccuracy = await db.contact.findMany({
+    where: {
+      gateStatus: "gate_2",
+      mergedIntoId: null,
+      id: { notIn: [...conflictIds] },
+    },
+    select: { id: true, clientId: true, companyId: true },
+  });
+  const perClientCap = 40;
+  const byClient = new Map<string, { id: string; clientId: string; companyId: string }[]>();
+  for (const row of gate2ForAccuracy) {
+    const arr = byClient.get(row.clientId) ?? [];
+    if (arr.length < perClientCap) {
+      arr.push(row);
+      byClient.set(row.clientId, arr);
+    }
+  }
+  const accuracyTargets = [...byClient.values()].flat();
+  const accuracyRows: {
+    id: string;
+    clientId: string;
+    contactId: string | null;
+    companyId: string | null;
+    batchId: string;
+    provider: string;
+    step: number;
+    fieldsFilled: string;
+    confidence: number;
+    rawResponse: string | null;
+    status: string;
+    errorMessage: string | null;
+    creditsUsed: number;
+    createdAt: Date;
+  }[] = [];
+  for (const c of accuracyTargets) {
+    const batchId = `seed-accuracy-${c.clientId.slice(0, 8)}`;
+    const title = `QA seed title ${c.id.slice(0, 8)}`;
+    const base = {
+      clientId: c.clientId,
+      contactId: c.id,
+      companyId: c.companyId,
+      batchId,
+      fieldsFilled: JSON.stringify(["title"]),
+      confidence: 0.9,
+      rawResponse: JSON.stringify({
+        fields: { title, seniority: "director" },
+        matched: true,
+        confidence: 0.9,
+      }),
+      status: "success",
+      errorMessage: null,
+      creditsUsed: 1,
+      createdAt: daysAgo(3),
+    };
+    accuracyRows.push({
+      id: newId(),
+      ...base,
+      provider: "cognism",
+      step: 1,
+    });
+    accuracyRows.push({
+      id: newId(),
+      ...base,
+      provider: "apollo",
+      step: 2,
+    });
+  }
+  if (accuracyRows.length) {
+    await db.enrichmentLog.createMany({ data: accuracyRows });
+    enrichmentLogs += accuracyRows.length;
+  }
+
   // --- 4. Quarantine scenario: 8 contacts ---
   const quarantineMix: { count: number; reasonCode: string; reasonDetail: string }[] = [
     { count: 3, reasonCode: "bounce", reasonDetail: "Hard bounce on last campaign send" },
@@ -761,7 +836,6 @@ async function seedScenarios(
     { count: 2, reasonCode: "manual_flag", reasonDetail: "Flagged by Data Owner for review" },
   ];
   // Avoid colliding with conflict targets (so each contact tells one story)
-  const conflictIds = new Set(conflictTargets.map((c) => c.id));
   const eligible = allContacts.filter((c) => !conflictIds.has(c.id));
   const quarantineTargets = faker.helpers.arrayElements(eligible, 8);
 

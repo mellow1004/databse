@@ -12,10 +12,14 @@ type SearchParams = Promise<{
 
 type FilterType = "all" | "contact" | "company";
 
+const THRESHOLDS = [0.5, 0.7, 0.85, 0.95] as const;
+
 function parseMinConfidence(raw: string | undefined): number {
-  const n = Number(raw ?? "0.85");
-  if (!Number.isFinite(n)) return 0.85;
-  return Math.min(1, Math.max(0.5, n));
+  const n = Number(raw);
+  if (THRESHOLDS.includes(n as (typeof THRESHOLDS)[number])) {
+    return n as (typeof THRESHOLDS)[number];
+  }
+  return 0.85;
 }
 
 function parseType(raw: string | undefined): FilterType {
@@ -37,12 +41,15 @@ export default async function DedupPage({
 
   if (clients.length === 0) {
     return (
-      <main className="min-h-screen max-w-6xl mx-auto p-8">
-        <h1 className="text-2xl font-semibold">Duplicate review</h1>
-        <p className="mt-2 text-sm text-gray-600">
-          No clients in the database. Run <code className="font-mono">npm run db:seed</code> first.
-        </p>
-      </main>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Duplicate review</h1>
+          <p className="text-sm text-slate-600">
+            No clients in the database. Run{" "}
+            <code className="font-mono text-xs">npm run db:seed</code> first.
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -61,14 +68,13 @@ export default async function DedupPage({
   });
 
   return (
-    <main className="min-h-screen max-w-6xl mx-auto p-8">
-      <h1 className="text-2xl font-semibold">Duplicate review</h1>
-      <p className="mt-2 text-sm text-gray-600 mb-6">
-        Inspect duplicate candidates surfaced by the dedup detection engine.
-        Survivor wins by default — flip toggles to take values from the
-        merged-from record. Every merge is logged in{" "}
-        <code className="font-mono">merge_history</code>.
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Duplicate review</h1>
+        <p className="text-sm text-slate-600">
+          Identified candidate merges across master data, sorted by confidence.
+        </p>
+      </div>
       <DedupReviewer
         candidates={filtered}
         clients={clients}
@@ -76,6 +82,6 @@ export default async function DedupPage({
         currentMinConfidence={currentMinConfidence}
         currentType={currentType}
       />
-    </main>
+    </div>
   );
 }

@@ -1,7 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Client = { id: string; name: string };
 
@@ -30,11 +48,17 @@ type ApiError = {
   details?: string[];
 };
 
+function fileSummary(file: File): string {
+  const kb = (file.size / 1024).toFixed(1);
+  return `${file.name} (${kb} KB)`;
+}
+
 export default function UploadForm({ clients }: UploadFormProps) {
   const router = useRouter();
 
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
-  const [source, setSource] = useState<(typeof SOURCE_OPTIONS)[number]["value"]>("crm_export");
+  const [source, setSource] =
+    useState<(typeof SOURCE_OPTIONS)[number]["value"]>("crm_export");
   const [sourceDetail, setSourceDetail] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -90,151 +114,171 @@ export default function UploadForm({ clients }: UploadFormProps) {
     : [];
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="clientId" className="block text-sm font-medium mb-1">
-          Client
-        </label>
-        <select
-          id="clientId"
-          className="w-full border rounded px-3 py-2 bg-white"
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-          disabled={submitting}
-        >
-          {clients.length === 0 ? (
-            <option value="">— no clients seeded —</option>
-          ) : (
-            clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))
-          )}
-        </select>
-      </div>
-
-      <div>
-        <label htmlFor="source" className="block text-sm font-medium mb-1">
-          Source
-        </label>
-        <select
-          id="source"
-          className="w-full border rounded px-3 py-2 bg-white"
-          value={source}
-          onChange={(e) =>
-            setSource(e.target.value as (typeof SOURCE_OPTIONS)[number]["value"])
-          }
-          disabled={submitting}
-        >
-          {SOURCE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label htmlFor="sourceDetail" className="block text-sm font-medium mb-1">
-          Source detail{" "}
-          <span className="font-normal text-gray-400">(optional)</span>
-        </label>
-        <input
-          id="sourceDetail"
-          type="text"
-          className="w-full border rounded px-3 py-2"
-          placeholder="e.g. Salesforce Q1 export"
-          value={sourceDetail}
-          onChange={(e) => setSourceDetail(e.target.value)}
-          disabled={submitting}
-        />
-      </div>
-
-      <div>
-        <label htmlFor="file" className="block text-sm font-medium mb-1">
-          CSV file
-        </label>
-        <input
-          id="file"
-          type="file"
-          accept=".csv,text/csv"
-          className="w-full border rounded px-3 py-2 bg-white"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          disabled={submitting}
-        />
-        {file && (
-          <p className="mt-1 text-xs text-gray-500">
-            {file.name} · {file.size.toLocaleString()} bytes
-          </p>
-        )}
-        <a
-          href="/samples/test_import.csv"
-          download
-          className="text-sm text-blue-600 underline mt-1 inline-block"
-        >
-          Download sample CSV (demonstrates all intake outcomes)
-        </a>
-      </div>
-
-      <div>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-        >
-          {submitting ? "Uploading…" : "Upload and stage"}
-        </button>
-      </div>
-
-      {error && (
-        <div className="mt-4 border border-red-300 bg-red-50 text-red-800 rounded p-4">
-          <p className="font-medium">Upload failed: {error.error}</p>
-          {error.message && <p className="mt-1 text-sm">{error.message}</p>}
-          {error.details && error.details.length > 0 && (
-            <ul className="mt-2 list-disc pl-5 text-sm">
-              {error.details.map((d, i) => (
-                <li key={i}>{d}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {success && (
-        <div className="mt-4 border border-green-300 bg-green-50 text-green-900 rounded p-4">
-          <p className="font-medium">Intake complete</p>
-          <p className="mt-1 text-sm">
-            Batch <code className="font-mono">{success.batchId}</code>
-          </p>
-          <p className="mt-2 text-sm">
-            <span className="font-medium">{success.rowsAccepted}</span> accepted,{" "}
-            <span className="font-medium">{success.rowsRejected}</span> rejected,{" "}
-            <span className="font-medium">{success.rowsTotal}</span> total
-          </p>
-
-          {nonZeroRejections.length > 0 && (
-            <div className="mt-2 text-sm">
-              <div className="font-medium">Rejection breakdown</div>
-              <ul className="mt-1 list-disc pl-5">
-                {nonZeroRejections.map(([reason, count]) => (
-                  <li key={reason}>
-                    {reason}: {count}
-                  </li>
+    <Card className="shadow-sm">
+      <CardHeader>
+        <CardTitle>Import details</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {clients.length === 0 ? (
+          <Alert>
+            <AlertTitle>No clients</AlertTitle>
+            <AlertDescription>
+              Seed the database before uploading a CSV.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        <form onSubmit={onSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="clientId">Client</Label>
+            <Select
+              value={clientId}
+              onValueChange={setClientId}
+              disabled={submitting || clients.length === 0}
+            >
+              <SelectTrigger id="clientId" className="w-full">
+                <SelectValue placeholder="Select client" />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
                 ))}
-              </ul>
-            </div>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="source">Source</Label>
+            <Select
+              value={source}
+              onValueChange={(v) =>
+                setSource(v as (typeof SOURCE_OPTIONS)[number]["value"])
+              }
+              disabled={submitting}
+            >
+              <SelectTrigger id="source" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SOURCE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sourceDetail">
+              Source detail{" "}
+              <span className="font-normal text-slate-400">(optional)</span>
+            </Label>
+            <Input
+              id="sourceDetail"
+              type="text"
+              placeholder="e.g. Salesforce Q1 export"
+              value={sourceDetail}
+              onChange={(e) => setSourceDetail(e.target.value)}
+              disabled={submitting}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="file">CSV file</Label>
+            <Input
+              id="file"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              disabled={submitting}
+              className="cursor-pointer"
+            />
+            {file ? (
+              <p className="text-sm text-slate-600">
+                Selected: {fileSummary(file)}
+              </p>
+            ) : null}
+            <a
+              href="/samples/test_import.csv"
+              download
+              className="text-sm text-primary underline-offset-4 hover:underline"
+            >
+              Download sample CSV (demonstrates all intake outcomes)
+            </a>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={submitting || clients.length === 0}
+            className="gap-2"
+          >
+            {submitting ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Upload className="size-4" aria-hidden />
+            )}
+            {submitting ? "Uploading…" : "Upload and stage"}
+          </Button>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Upload failed: {error.error}</AlertTitle>
+              <AlertDescription className="space-y-2">
+                {error.message ? <p>{error.message}</p> : null}
+                {error.details && error.details.length > 0 ? (
+                  <ul className="list-inside list-disc text-sm">
+                    {error.details.map((d, i) => (
+                      <li key={i}>{d}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </AlertDescription>
+            </Alert>
           )}
 
-          <button
-            type="button"
-            onClick={() => router.push(success.redirectUrl)}
-            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            View batch detail
-          </button>
-        </div>
-      )}
-    </form>
+          {success && (
+            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+              <AlertTitle>Intake complete</AlertTitle>
+              <AlertDescription className="space-y-3 text-emerald-900/90">
+                <p>
+                  Batch{" "}
+                  <code className="rounded bg-emerald-100/80 px-1 font-mono text-sm">
+                    {success.batchId}
+                  </code>
+                </p>
+                <p className="text-sm">
+                  <span className="font-semibold">{success.rowsAccepted}</span>{" "}
+                  accepted,{" "}
+                  <span className="font-semibold">{success.rowsRejected}</span>{" "}
+                  rejected,{" "}
+                  <span className="font-semibold">{success.rowsTotal}</span> total
+                </p>
+                {nonZeroRejections.length > 0 ? (
+                  <div className="text-sm">
+                    <p className="font-medium">Rejection breakdown</p>
+                    <ul className="mt-1 list-inside list-disc">
+                      {nonZeroRejections.map(([reason, count]) => (
+                        <li key={reason}>
+                          {reason}: {count}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => router.push(success.redirectUrl)}
+                >
+                  View batch detail
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+        </form>
+      </CardContent>
+    </Card>
   );
 }

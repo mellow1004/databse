@@ -1,21 +1,26 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
+import { useTransition } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type ClientOption = { id: string; name: string };
 
 type Props = {
   clients: ClientOption[];
-  selectedClientId: string; // "" for "All clients"
+  selectedClientId: string;
   selectedScope: "all" | "global" | "client_level" | "domain_level";
   selectedStatus: "active" | "released" | "all";
 };
 
-/**
- * Sticky filter bar — every change immediately pushes a new URL so the
- * server component re-fetches with the new filters. Using router.push keeps
- * the URL shareable and back-button-friendly.
- */
 export default function FilterBar({
   clients,
   selectedClientId,
@@ -24,6 +29,7 @@ export default function FilterBar({
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const [pending, startTransition] = useTransition();
 
   function push(next: {
     clientId?: string;
@@ -31,60 +37,80 @@ export default function FilterBar({
     status?: string;
   }) {
     const params = new URLSearchParams();
-    const clientId = next.clientId ?? selectedClientId;
-    const scope = next.scope ?? selectedScope;
-    const status = next.status ?? selectedStatus;
+    const clientId =
+      next.clientId !== undefined ? next.clientId : selectedClientId;
+    const scope = next.scope !== undefined ? next.scope : selectedScope;
+    const status = next.status !== undefined ? next.status : selectedStatus;
     if (clientId) params.set("clientId", clientId);
     if (scope && scope !== "all") params.set("scope", scope);
     if (status && status !== "active") params.set("status", status);
     const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    startTransition(() => {
+      router.push(qs ? `${pathname}?${qs}` : pathname);
+    });
   }
 
   return (
-    <div className="sticky top-0 z-10 -mx-8 mb-4 border-b bg-white px-8 py-3 flex flex-wrap items-center gap-4 text-sm">
-      <label className="flex items-center gap-2">
-        <span className="text-xs text-gray-600">Client</span>
-        <select
-          value={selectedClientId}
-          onChange={(e) => push({ clientId: e.target.value })}
-          className="rounded border px-2 py-1 text-sm"
-        >
-          <option value="">All clients</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex items-center gap-2">
-        <span className="text-xs text-gray-600">Scope</span>
-        <select
-          value={selectedScope}
-          onChange={(e) => push({ scope: e.target.value })}
-          className="rounded border px-2 py-1 text-sm"
-        >
-          <option value="all">All</option>
-          <option value="global">Global</option>
-          <option value="client_level">Client</option>
-          <option value="domain_level">Domain</option>
-        </select>
-      </label>
-
-      <label className="flex items-center gap-2">
-        <span className="text-xs text-gray-600">Status</span>
-        <select
-          value={selectedStatus}
-          onChange={(e) => push({ status: e.target.value })}
-          className="rounded border px-2 py-1 text-sm"
-        >
-          <option value="active">Active</option>
-          <option value="released">Released</option>
-          <option value="all">All</option>
-        </select>
-      </label>
-    </div>
+    <Card className="sticky top-0 z-10 shadow-sm">
+      <CardContent className="flex flex-wrap items-end gap-6 pt-6">
+        <div className="space-y-2">
+          <Label>Client</Label>
+          <Select
+            value={selectedClientId || "__all__"}
+            disabled={pending}
+            onValueChange={(v) =>
+              push({ clientId: v === "__all__" ? "" : v })
+            }
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="All clients" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All clients</SelectItem>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Scope</Label>
+          <Select
+            value={selectedScope}
+            disabled={pending}
+            onValueChange={(v) => push({ scope: v })}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="global">Global</SelectItem>
+              <SelectItem value="client_level">Client</SelectItem>
+              <SelectItem value="domain_level">Domain</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Status</Label>
+          <Select
+            value={selectedStatus}
+            disabled={pending}
+            onValueChange={(v) => push({ status: v })}
+          >
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="released">Released</SelectItem>
+              <SelectItem value="all">All</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

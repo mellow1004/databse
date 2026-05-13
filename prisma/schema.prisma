@@ -301,6 +301,34 @@ model QuarantineLog {
   @@map("quarantine_log")
 }
 
+/// Records one sampled contact per provider per QA cycle.
+/// Drawn from Gate 2 population for manual verification (title + company).
+/// Aggregated into a provider accuracy rate that informs waterfall demotion.
+model AccuracySample {
+  id               String    @id @default(cuid())
+  clientId         String
+  provider         String // "cognism" | "apollo" | etc.
+  cycleNumber      Int // ties to refresh_log cycle (use 0 for ad-hoc samples)
+  contactId        String
+  enrichmentLogId  String? // optional pointer to the enrichment row whose claim we're auditing
+  fieldChecked     String // "title" | "company" (extensible)
+  expectedValue    String // the value the provider claimed (what we're checking)
+
+  // Manual verification result
+  reviewedAt  DateTime?
+  reviewerId  String?
+  isCorrect   Boolean? // null = pending, true = correct, false = incorrect
+  actualValue String? // optional — what the reviewer actually found
+  notes       String?
+
+  sampledAt DateTime @default(now())
+
+  @@index([provider, cycleNumber])
+  @@index([reviewedAt])
+  @@index([clientId])
+  @@map("accuracy_samples")
+}
+
 /// One row per 90-day refresh cycle run. Records what was re-verified,
 /// what got downgraded, and the cost per cycle (PRD Section 9).
 model RefreshLog {

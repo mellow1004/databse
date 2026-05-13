@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export type ExistingOutcome = {
   newPersons: number;
@@ -18,18 +28,6 @@ type Props = {
   existingOutcome?: ExistingOutcome | null;
 };
 
-/**
- * Renders a single coloured card that varies by batch state:
- *   - ready_for_review + rowsAccepted > 0 → blue: shows the Promote button
- *   - ready_for_review + rowsAccepted = 0 → gray: nothing to do
- *   - promoting                            → yellow: in flight
- *   - completed                            → green: 4-count summary card
- *   - failed                               → red: surfaces the bad state
- *
- * The button POSTs to /api/intake/batches/:id/promote, then triggers a
- * router.refresh() so the server component re-queries the batch and the card
- * re-renders in its post-promotion form.
- */
 export default function PromoteSection({
   batchId,
   status,
@@ -57,8 +55,6 @@ export default function PromoteSection({
       if (!res.ok) {
         setError(data.message || data.error || `HTTP ${res.status}`);
       } else {
-        // The page is a server component with force-dynamic — refresh re-runs
-        // its data fetch and re-renders this section in its post-promotion form.
         router.refresh();
       }
     } catch (err) {
@@ -71,97 +67,132 @@ export default function PromoteSection({
   if (status === "ready_for_review") {
     if (rowsAccepted === 0) {
       return (
-        <div className="mb-4 p-4 rounded border border-gray-300 bg-gray-50">
-          <p className="text-sm text-gray-700">
-            Nothing to promote — all rows in this batch were rejected.
-          </p>
-        </div>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Promote to master database</CardTitle>
+            <CardDescription>Nothing to promote for this batch.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Alert>
+              <AlertTitle>All rows rejected</AlertTitle>
+              <AlertDescription>
+                Nothing to promote — all rows in this batch were rejected.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
       );
     }
 
     return (
-      <div className="mb-4 p-4 rounded border border-blue-300 bg-blue-50">
-        <h2 className="font-medium text-blue-900">Promote to master database</h2>
-        <p className="mt-1 text-sm text-blue-800">
-          {rowsAccepted} accepted rows are ready to be moved into
-          contacts/companies. Identity resolution will match them to existing
-          records or create new ones. New contacts start at gate_1.
-        </p>
-        <button
-          type="button"
-          onClick={onPromote}
-          disabled={loading}
-          className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded disabled:opacity-50"
-        >
-          {loading ? "Promoting…" : "Promote accepted rows"}
-        </button>
-        {error && <p className="mt-2 text-sm text-red-700">Error: {error}</p>}
-      </div>
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Promote to master database</CardTitle>
+          <CardDescription>
+            {rowsAccepted} accepted rows are ready to be moved into contacts/companies.
+            Identity resolution will match them to existing records or create new ones.
+            New contacts start at gate_1.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button type="button" onClick={onPromote} disabled={loading} className="gap-2">
+            {loading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : null}
+            {loading ? "Promoting…" : "Promote accepted rows"}
+          </Button>
+          {error ? (
+            <Alert variant="destructive">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+        </CardContent>
+      </Card>
     );
   }
 
   if (status === "completed") {
     return (
-      <div className="mb-4 p-4 rounded border border-green-300 bg-green-50">
-        <h2 className="font-medium text-green-900">Promoted to master database</h2>
-        {existingOutcome ? (
-          <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <div>
-              <div className="text-xs text-gray-600">New persons</div>
-              <div className="text-lg font-medium text-green-900 tabular-nums">
-                {existingOutcome.newPersons}
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Promoted to master database</CardTitle>
+          <CardDescription>Promotion outcome for this batch.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {existingOutcome ? (
+            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">New persons</p>
+                <p className="text-lg font-semibold tabular-nums text-slate-900">
+                  {existingOutcome.newPersons}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">New companies</p>
+                <p className="text-lg font-semibold tabular-nums text-slate-900">
+                  {existingOutcome.newCompanies}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">New contacts</p>
+                <p className="text-lg font-semibold tabular-nums text-slate-900">
+                  {existingOutcome.newContacts}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Matched existing</p>
+                <p className="text-lg font-semibold tabular-nums text-slate-900">
+                  {existingOutcome.matchedExistingContacts}
+                </p>
               </div>
             </div>
-            <div>
-              <div className="text-xs text-gray-600">New companies</div>
-              <div className="text-lg font-medium text-green-900 tabular-nums">
-                {existingOutcome.newCompanies}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-600">New contacts</div>
-              <div className="text-lg font-medium text-green-900 tabular-nums">
-                {existingOutcome.newContacts}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-600">Matched existing</div>
-              <div className="text-lg font-medium text-green-900 tabular-nums">
-                {existingOutcome.matchedExistingContacts}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <p className="mt-1 text-sm text-green-800">
-            {rowsPromoted} rows promoted.
-          </p>
-        )}
-      </div>
+          ) : (
+            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+              <AlertTitle>Complete</AlertTitle>
+              <AlertDescription>{rowsPromoted} rows promoted.</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
     );
   }
 
   if (status === "promoting") {
     return (
-      <div className="mb-4 p-4 rounded border border-yellow-300 bg-yellow-50">
-        <p className="text-sm text-yellow-900">
-          Status: <span className="font-medium">promoting</span> — in
-          progress…
-        </p>
-      </div>
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Promotion in progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+            <AlertTitle>Status: promoting</AlertTitle>
+            <AlertDescription>
+              Rows are being written to the master database — this may take a moment.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
     );
   }
 
   if (status === "failed") {
     return (
-      <div className="mb-4 p-4 rounded border border-red-300 bg-red-50">
-        <p className="text-sm text-red-900">
-          Status: <span className="font-medium">failed</span>.
-        </p>
-      </div>
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Batch failed</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertTitle>Status: failed</AlertTitle>
+            <AlertDescription>
+              This batch did not complete successfully. Check logs or re-upload.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
     );
   }
 
-  // "uploaded" is a transient pre-intake state; render nothing rather than
-  // mislead the user with an inactive card.
   return null;
 }

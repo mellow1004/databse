@@ -2,6 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export type ClientOption = { id: string; name: string };
 
@@ -21,15 +34,6 @@ const REASON_CODES = [
   "bounce_repeated",
 ] as const;
 
-/**
- * Inline "Add suppression" form. The target-field radio collapses three
- * model columns (contactId/email/domain) into a single user-facing input
- * whose label flips based on the selected kind.
- *
- * For `client_level` scope the user can leave the target value empty to
- * register a "broad-client" suppression — supported by the service and
- * called out below the input.
- */
 export default function AddSuppressionForm({ clients }: Props) {
   const router = useRouter();
   const [scope, setScope] = useState<Scope>("global");
@@ -62,7 +66,9 @@ export default function AddSuppressionForm({ clients }: Props) {
     const trimmed = targetValue.trim();
     const isBroadClient = scope === "client_level" && trimmed === "";
     if (!isBroadClient && trimmed === "") {
-      setError("Target value is required (or pick client_level + leave empty for a broad-client block).");
+      setError(
+        "Target value is required (or pick client_level + leave empty for a broad-client block).",
+      );
       return;
     }
     if (isOptOut && coolingMode === "dated" && !coolingDate) {
@@ -112,172 +118,178 @@ export default function AddSuppressionForm({ clients }: Props) {
     targetKind === "contact"
       ? "Contact id"
       : targetKind === "email"
-      ? "Email address"
-      : "Domain";
+        ? "Email address"
+        : "Domain";
   const targetPlaceholder =
     targetKind === "contact"
       ? "cmxxxxxx..."
       : targetKind === "email"
-      ? "person@example.com"
-      : "example.com";
+        ? "person@example.com"
+        : "example.com";
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="border rounded p-4 bg-white shadow-sm space-y-4 text-sm"
-    >
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-medium">Add suppression</h2>
-        <span className="text-xs text-gray-500">
+    <Card className="shadow-sm">
+      <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-2 space-y-0">
+        <CardTitle>Add new suppression</CardTitle>
+        <p className="text-xs text-muted-foreground">
           owner = data_owner · source = manual
-        </span>
-      </div>
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={onSubmit} className="space-y-6 text-sm">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="sup-scope">Scope</Label>
+              <Select
+                value={scope}
+                onValueChange={(v) => setScope(v as Scope)}
+              >
+                <SelectTrigger id="sup-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">global — every client</SelectItem>
+                  <SelectItem value="client_level">client_level — one client</SelectItem>
+                  <SelectItem value="domain_level">domain_level — by domain</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {scope === "client_level" ? (
+              <div className="space-y-2">
+                <Label htmlFor="sup-client">Client</Label>
+                <Select value={clientId} onValueChange={setClientId}>
+                  <SelectTrigger id="sup-client">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <label className="block">
-          <span className="text-xs text-gray-600">Scope</span>
-          <select
-            value={scope}
-            onChange={(e) => setScope(e.target.value as Scope)}
-            className="mt-1 w-full rounded border px-3 py-2"
-          >
-            <option value="global">global — applies to every client</option>
-            <option value="client_level">client_level — one client only</option>
-            <option value="domain_level">domain_level — by domain only</option>
-          </select>
-        </label>
-
-        {scope === "client_level" && (
-          <label className="block">
-            <span className="text-xs text-gray-600">Client</span>
-            <select
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              className="mt-1 w-full rounded border px-3 py-2"
-            >
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-
-      <div>
-        <span className="text-xs text-gray-600">Target</span>
-        <div className="mt-1 flex flex-wrap gap-3 text-sm">
-          {(["contact", "email", "domain"] as TargetKind[]).map((kind) => (
-            <label key={kind} className="inline-flex items-center gap-1">
-              <input
-                type="radio"
-                name="target-kind"
-                checked={targetKind === kind}
-                onChange={() => setTargetKind(kind)}
-              />
-              <span>{kind}</span>
-            </label>
-          ))}
-        </div>
-        <label className="block mt-2">
-          <span className="text-xs text-gray-600">{targetLabel}</span>
-          <input
-            type="text"
-            value={targetValue}
-            onChange={(e) => setTargetValue(e.target.value)}
-            placeholder={targetPlaceholder}
-            className="mt-1 w-full rounded border px-3 py-2 font-mono text-xs"
-          />
-          {scope === "client_level" && (
-            <span className="text-xs text-gray-500 mt-1 block">
-              Leave blank to block ALL contacts for the selected client
-              (broad-client suppression).
-            </span>
-          )}
-        </label>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <label className="block">
-          <span className="text-xs text-gray-600">Reason code</span>
-          <select
-            value={reasonCode}
-            onChange={(e) => setReasonCode(e.target.value)}
-            className="mt-1 w-full rounded border px-3 py-2"
-          >
-            {REASON_CODES.map((rc) => (
-              <option key={rc} value={rc}>
-                {rc}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-xs text-gray-600">Reason detail (optional)</span>
-          <textarea
-            value={reasonDetail}
-            onChange={(e) => setReasonDetail(e.target.value)}
-            placeholder="Free-form notes for auditors"
-            rows={2}
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
-        </label>
-      </div>
-
-      <div className="rounded border border-gray-200 bg-gray-50 p-3">
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={isOptOut}
-            onChange={(e) => setIsOptOut(e.target.checked)}
-          />
-          <span>
-            <span className="font-medium">Is opt-out</span>
-            <span className="ml-2 text-xs text-gray-500">
-              regulatory; bypasses scope rules
-            </span>
-          </span>
-        </label>
-
-        {isOptOut && (
-          <div className="mt-3 space-y-2">
-            <span className="block text-xs text-gray-600">Cooling period</span>
-            <div className="flex flex-wrap gap-3 text-sm">
-              {(["indefinite", "dated"] as const).map((mode) => (
-                <label key={mode} className="inline-flex items-center gap-1">
+          <div className="space-y-3">
+            <Label>Target</Label>
+            <div className="flex flex-wrap gap-4">
+              {(["contact", "email", "domain"] as TargetKind[]).map((kind) => (
+                <label key={kind} className="flex items-center gap-2 text-sm">
                   <input
                     type="radio"
-                    name="cooling-mode"
-                    checked={coolingMode === mode}
-                    onChange={() => setCoolingMode(mode)}
+                    name="target-kind"
+                    checked={targetKind === kind}
+                    onChange={() => setTargetKind(kind)}
+                    className="size-4"
                   />
-                  <span>{mode === "indefinite" ? "Indefinite" : "Until specific date"}</span>
+                  <span className="capitalize">{kind}</span>
                 </label>
               ))}
             </div>
-            {coolingMode === "dated" && (
-              <input
-                type="date"
-                value={coolingDate}
-                onChange={(e) => setCoolingDate(e.target.value)}
-                className="rounded border px-3 py-2 text-sm"
+            <div className="space-y-2">
+              <Label htmlFor="sup-target">{targetLabel}</Label>
+              <Input
+                id="sup-target"
+                value={targetValue}
+                onChange={(e) => setTargetValue(e.target.value)}
+                placeholder={targetPlaceholder}
+                className="font-mono text-xs"
               />
-            )}
+              {scope === "client_level" ? (
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to block ALL contacts for the selected client (broad-client
+                  suppression).
+                </p>
+              ) : null}
+            </div>
           </div>
-        )}
-      </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm disabled:opacity-50"
-        >
-          {loading ? "Saving…" : "Add suppression"}
-        </button>
-        {error && <p className="text-sm text-red-700">{error}</p>}
-      </div>
-    </form>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="sup-reason-code">Reason code</Label>
+              <Select value={reasonCode} onValueChange={setReasonCode}>
+                <SelectTrigger id="sup-reason-code">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REASON_CODES.map((rc) => (
+                    <SelectItem key={rc} value={rc}>
+                      {rc}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sup-reason-detail">Reason detail (optional)</Label>
+              <Textarea
+                id="sup-reason-detail"
+                value={reasonDetail}
+                onChange={(e) => setReasonDetail(e.target.value)}
+                placeholder="Free-form notes for auditors"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="sup-optout"
+                checked={isOptOut}
+                onCheckedChange={(v) => setIsOptOut(v === true)}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="sup-optout" className="font-medium leading-none">
+                  Is opt-out
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Regulatory; bypasses scope rules
+                </p>
+              </div>
+            </div>
+            {isOptOut ? (
+              <div className="space-y-3 pl-7">
+                <Label className="text-xs">Cooling period</Label>
+                <div className="flex flex-wrap gap-4">
+                  {(["indefinite", "dated"] as const).map((mode) => (
+                    <label key={mode} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="cooling-mode"
+                        checked={coolingMode === mode}
+                        onChange={() => setCoolingMode(mode)}
+                        className="size-4"
+                      />
+                      <span>
+                        {mode === "indefinite" ? "Indefinite" : "Until specific date"}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {coolingMode === "dated" ? (
+                  <Input
+                    type="date"
+                    value={coolingDate}
+                    onChange={(e) => setCoolingDate(e.target.value)}
+                    className="max-w-xs"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={loading}>
+              {loading ? "Saving…" : "Add suppression"}
+            </Button>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

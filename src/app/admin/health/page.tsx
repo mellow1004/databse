@@ -1,17 +1,44 @@
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { db } from "@/lib/db";
+import { getStatusVariant } from "@/lib/badge-helpers";
 
-// Always re-query — this is a debug/health page, never cache.
 export const dynamic = "force-dynamic";
-
-// ----------------------------------------------------------------------------
-// Table-count loaders, grouped to match the three schema layers
-// ----------------------------------------------------------------------------
 
 async function loadCounts() {
   const [
-    clients, persons, companies, domainAliases, contacts, ccRelationships,
-    enrichmentLog, verifications, gateStatusHistory, mergeHistory, quarantineLog, refreshLog,
-    suppressions, tombstones, users, rolePermissions, auditLog, integrationContracts,
+    clients,
+    persons,
+    companies,
+    domainAliases,
+    contacts,
+    ccRelationships,
+    enrichmentLog,
+    verifications,
+    gateStatusHistory,
+    mergeHistory,
+    quarantineLog,
+    refreshLog,
+    suppressions,
+    tombstones,
+    users,
+    rolePermissions,
+    auditLog,
+    integrationContracts,
     latestClient,
   ] = await Promise.all([
     db.client.count(),
@@ -64,10 +91,6 @@ async function loadCounts() {
   };
 }
 
-// ----------------------------------------------------------------------------
-// Scenario checks — each returns an actual count vs an expectation, and a pass flag
-// ----------------------------------------------------------------------------
-
 type ScenarioResult = {
   name: string;
   expected: string;
@@ -75,10 +98,12 @@ type ScenarioResult = {
   pass: boolean;
 };
 
-// Canonicalises a LinkedIn URL so seeded variants (trailing slash, www., http vs https)
-// collapse to the same key — the same transformation a real dedup module would apply.
 function normaliseLinkedinUrl(url: string): string {
-  return url.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "");
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "");
 }
 
 async function runScenarios(): Promise<ScenarioResult[]> {
@@ -87,7 +112,6 @@ async function runScenarios(): Promise<ScenarioResult[]> {
     db.client.findFirst({ where: { name: "ClientCo Finance" }, select: { id: true } }),
   ]);
 
-  // 1. Dedup-contact (ClientCo Tech): count canonicalised LinkedIn URLs that map to ≥ 2 persons.
   let dedupContact = 0;
   if (ctech) {
     const rows = await db.person.findMany({
@@ -103,8 +127,6 @@ async function runScenarios(): Promise<ScenarioResult[]> {
     dedupContact = [...counts.values()].filter((c) => c >= 2).length;
   }
 
-  // 2. Dedup-company (ClientCo Finance): group by first token of legalName (lowercased);
-  // count groups that span ≥ 2 distinct rootDomains.
   let dedupCompany = 0;
   if (cfin) {
     const rows = await db.company.findMany({
@@ -121,7 +143,6 @@ async function runScenarios(): Promise<ScenarioResult[]> {
     dedupCompany = [...groups.values()].filter((s) => s.size >= 2).length;
   }
 
-  // 3. Conflict-resolution: contactIds with EnrichmentLog rows from BOTH cognism and apollo.
   const enrichRows = await db.enrichmentLog.findMany({
     where: { contactId: { not: null }, provider: { in: ["cognism", "apollo"] } },
     select: { contactId: true, provider: true },
@@ -138,72 +159,91 @@ async function runScenarios(): Promise<ScenarioResult[]> {
     (s) => s.has("cognism") && s.has("apollo"),
   ).length;
 
-  // 4. Quarantine
   const quarantine = await db.contact.count({ where: { quarantineReason: { not: null } } });
 
-  // 5. Stale gate_2
   const ninetyDaysAgo = new Date(Date.now() - 90 * 86_400_000);
   const stale = await db.contact.count({
     where: { gateStatus: "gate_2", lastVerifiedAt: { lt: ninetyDaysAgo } },
   });
 
-  // 6. Invalid-email verifications
   const invalidEmail = await db.verification.count({ where: { status: "invalid" } });
 
-  // 7. Tombstones
   const tombstones = await db.tombstone.count();
 
-  // 8. Opt-out suppression
   const optOut = await db.suppression.count({ where: { isOptOut: true } });
 
   return [
-    { name: "Dedup-contact (ClientCo Tech, canonical LinkedIn URLs)", expected: "≥ 5", actual: dedupContact, pass: dedupContact >= 5 },
-    { name: "Dedup-company (ClientCo Finance, shared name root)", expected: "≥ 3", actual: dedupCompany, pass: dedupCompany >= 3 },
-    { name: "Conflict-resolution (cognism × apollo on same contact)", expected: "≥ 4", actual: conflictResolution, pass: conflictResolution >= 4 },
-    { name: "Quarantine reason set on Contact", expected: "= 8", actual: quarantine, pass: quarantine === 8 },
-    { name: "Stale gate_2 (lastVerifiedAt > 90 days ago)", expected: "> 0", actual: stale, pass: stale > 0 },
-    { name: "Invalid-email verifications", expected: "> 0", actual: invalidEmail, pass: invalidEmail > 0 },
-    { name: "Tombstones", expected: "≥ 3", actual: tombstones, pass: tombstones >= 3 },
-    { name: "Opt-out suppression (isOptOut = true)", expected: "≥ 1", actual: optOut, pass: optOut >= 1 },
+    {
+      name: "Dedup-contact (ClientCo Tech, canonical LinkedIn URLs)",
+      expected: "≥ 5",
+      actual: dedupContact,
+      pass: dedupContact >= 5,
+    },
+    {
+      name: "Dedup-company (ClientCo Finance, shared name root)",
+      expected: "≥ 3",
+      actual: dedupCompany,
+      pass: dedupCompany >= 3,
+    },
+    {
+      name: "Conflict-resolution (cognism × apollo on same contact)",
+      expected: "≥ 4",
+      actual: conflictResolution,
+      pass: conflictResolution >= 4,
+    },
+    {
+      name: "Quarantine reason set on Contact",
+      expected: "= 8",
+      actual: quarantine,
+      pass: quarantine === 8,
+    },
+    {
+      name: "Stale gate_2 (lastVerifiedAt > 90 days ago)",
+      expected: "> 0",
+      actual: stale,
+      pass: stale > 0,
+    },
+    {
+      name: "Invalid-email verifications",
+      expected: "> 0",
+      actual: invalidEmail,
+      pass: invalidEmail > 0,
+    },
+    {
+      name: "Tombstones (≥ 5 baseline — grows on hard delete)",
+      expected: "≥ 5",
+      actual: tombstones,
+      pass: tombstones >= 5,
+    },
+    {
+      name: "Opt-out suppression (isOptOut = true)",
+      expected: "≥ 1",
+      actual: optOut,
+      pass: optOut >= 1,
+    },
   ];
 }
 
-// ----------------------------------------------------------------------------
-// Presentation
-// ----------------------------------------------------------------------------
-
-function CountTable({ title, rows }: { title: string; rows: { name: string; rows: number }[] }) {
+function LayerTable({ rows }: { rows: { name: string; rows: number }[] }) {
   return (
-    <section className="mt-8">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <table className="mt-2 w-full border text-sm">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="border px-3 py-2 text-left">Table</th>
-            <th className="border px-3 py-2 text-right">Rows</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.name}>
-              <td className="border px-3 py-2 font-mono">{r.name}</td>
-              <td className="border px-3 py-2 text-right font-mono">{r.rows.toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-  );
-}
-
-function StatusBadge({ pass }: { pass: boolean }) {
-  const cls = pass
-    ? "bg-green-100 text-green-800"
-    : "bg-red-100 text-red-800";
-  return (
-    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {pass ? "PASS" : "FAIL"}
-    </span>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Table</TableHead>
+          <TableHead className="text-right">Rows</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((r) => (
+          <TableRow key={r.name}>
+            <TableCell className="font-mono text-sm">{r.name}</TableCell>
+            <TableCell className="text-right font-mono text-sm tabular-nums">
+              {r.rows.toLocaleString()}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -213,51 +253,115 @@ export default async function HealthPage() {
   const allGreen = scenarios.every((s) => s.pass);
 
   return (
-    <main className="min-h-screen max-w-5xl mx-auto p-8">
-      <h1 className="text-2xl font-semibold">Database Health</h1>
-      <p className="mt-1 text-sm text-gray-600">
-        Latest seed timestamp:{" "}
-        <span className="font-mono">
-          {counts.seedTimestamp ? counts.seedTimestamp.toISOString() : "—"}
-        </span>
-      </p>
-      <p className="mt-1 text-sm">
-        Overall:{" "}
-        <StatusBadge pass={allGreen} />{" "}
-        <span className="text-gray-600">
-          ({scenarios.filter((s) => s.pass).length}/{scenarios.length} scenario checks passing)
-        </span>
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Database health</h1>
+        <p className="text-sm text-slate-600">
+          Schema state, seeded data integrity, and scenario checks
+        </p>
+      </div>
 
-      <CountTable title="Identity layer" rows={counts.identity} />
-      <CountTable title="Event-log layer" rows={counts.eventLog} />
-      <CountTable title="Governance layer" rows={counts.governance} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge
+          className={getStatusVariant(allGreen ? "valid" : "failed")}
+        >
+          {allGreen ? "PASS" : "FAIL"}
+        </Badge>
+        <span className="text-sm text-slate-600">
+          Seed timestamp:{" "}
+          <span className="font-mono text-slate-800">
+            {counts.seedTimestamp ? counts.seedTimestamp.toISOString() : "—"}
+          </span>
+        </span>
+        <span className="text-sm text-slate-500">
+          ({scenarios.filter((s) => s.pass).length}/{scenarios.length} checks passing)
+        </span>
+      </div>
 
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold">Scenario checks</h2>
-        <table className="mt-2 w-full border text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="border px-3 py-2 text-left">Check</th>
-              <th className="border px-3 py-2 text-left">Expected</th>
-              <th className="border px-3 py-2 text-right">Actual</th>
-              <th className="border px-3 py-2 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {scenarios.map((s) => (
-              <tr key={s.name}>
-                <td className="border px-3 py-2">{s.name}</td>
-                <td className="border px-3 py-2 font-mono">{s.expected}</td>
-                <td className="border px-3 py-2 text-right font-mono">{s.actual}</td>
-                <td className="border px-3 py-2">
-                  <StatusBadge pass={s.pass} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <Separator />
+
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">Identity layer</h2>
+        <p className="text-sm text-slate-600">Core identity and relationship tables.</p>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Identity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LayerTable rows={counts.identity} />
+          </CardContent>
+        </Card>
       </section>
-    </main>
+
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">Event-log layer</h2>
+        <p className="text-sm text-slate-600">
+          Verification, enrichment, gates, merges, and refresh cycles.
+        </p>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Event log</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LayerTable rows={counts.eventLog} />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">Governance layer</h2>
+        <p className="text-sm text-slate-600">
+          Suppressions, tombstones, users, permissions, audit trail, contracts.
+        </p>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Governance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LayerTable rows={counts.governance} />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">Scenario checks</h2>
+        <p className="text-sm text-slate-600">
+          Seeded demo scenarios — failing rows indicate drift or a partial wipe.
+        </p>
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Checks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Check</TableHead>
+                  <TableHead>Expected</TableHead>
+                  <TableHead className="text-right">Actual</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scenarios.map((s) => (
+                  <TableRow key={s.name}>
+                    <TableCell className="max-w-md text-sm">{s.name}</TableCell>
+                    <TableCell className="font-mono text-sm">{s.expected}</TableCell>
+                    <TableCell className="text-right font-mono text-sm tabular-nums">
+                      {s.actual}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getStatusVariant(s.pass ? "valid" : "failed")}>
+                        {s.pass ? "PASS" : "FAIL"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </section>
+    </div>
   );
 }

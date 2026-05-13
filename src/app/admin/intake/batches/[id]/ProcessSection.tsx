@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-/**
- * Snapshot of the three bulk-service outputs the pipeline runs.
- * Both the API route handler and this card serialise/deserialise this shape
- * via the audit_log row stored on the import batch.
- */
 export type PipelineSummary = {
   contactCount: number;
   verification: {
@@ -49,12 +54,6 @@ function formatCredits(creditsByProvider: Record<string, number>): string {
   return `${total} credits across ${entries.length} provider${entries.length === 1 ? "" : "s"}`;
 }
 
-/**
- * The full Phase-4 trigger UI for one batch. Renders nothing for batches that
- * haven't been promoted yet, a blue "run pipeline" card when there's work to
- * do, and a green completed card with three result columns once an
- * audit_log#pipeline_completed row exists for this batch.
- */
 export default function ProcessSection({
   batchId,
   batchStatus,
@@ -65,11 +64,13 @@ export default function ProcessSection({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Optimistic mirror of existingPipelineResult so the green card appears
-  // immediately after a successful run, before router.refresh() lands.
   const [localResult, setLocalResult] = useState<PipelineSummary | null>(
     existingPipelineResult,
   );
+
+  useEffect(() => {
+    setLocalResult(existingPipelineResult);
+  }, [existingPipelineResult]);
 
   if (batchStatus !== "completed" || rowsPromoted === 0) return null;
 
@@ -89,7 +90,6 @@ export default function ProcessSection({
         setError(data.message || data.error || `HTTP ${res.status}`);
         return;
       }
-      // The route returns the same PipelineSummary shape we render here.
       setLocalResult(data as PipelineSummary);
       router.refresh();
     } catch (err) {
@@ -101,89 +101,119 @@ export default function ProcessSection({
 
   if (localResult === null) {
     return (
-      <div className="mb-4 p-4 rounded border border-blue-300 bg-blue-50">
-        <h2 className="font-medium text-blue-900">
-          Run verification &amp; enrichment pipeline
-        </h2>
-        <p className="mt-1 text-sm text-blue-800">
-          Runs MillionVerifier (with Bouncer fallback) → Cognism + Apollo
-          enrichment → gate evaluation on {contactCount} promoted contacts.
-          Conflicts where confidence delta &lt; 15% are flagged for manual
-          review.
-        </p>
-        <button
-          type="button"
-          onClick={onRun}
-          disabled={loading}
-          className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded disabled:opacity-50"
-        >
-          {loading ? "Running pipeline…" : "Run pipeline"}
-        </button>
-        {error && <p className="mt-2 text-sm text-red-700">Error: {error}</p>}
-      </div>
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Run verification &amp; enrichment pipeline</CardTitle>
+          <CardDescription>
+            Runs MillionVerifier (with Bouncer fallback) → Cognism + Apollo enrichment →
+            gate evaluation on {contactCount} promoted contacts. Conflicts where confidence
+            delta &lt; 15% are flagged for manual review.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button type="button" onClick={onRun} disabled={loading} className="gap-2">
+            {loading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : null}
+            {loading ? "Running pipeline…" : "Run pipeline"}
+          </Button>
+          {error ? (
+            <Alert variant="destructive">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+        </CardContent>
+      </Card>
     );
   }
 
   const { verification, enrichment, gates } = localResult;
   return (
-    <div className="mb-4 p-4 rounded border border-green-300 bg-green-50">
-      <h2 className="font-medium text-green-900">Pipeline completed</h2>
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-        <div className="rounded border border-green-200 bg-white p-3">
-          <div className="text-xs uppercase tracking-wide text-gray-500">
-            Verification
-          </div>
-          <div className="mt-1 text-lg font-medium text-green-900 tabular-nums">
-            {verification.succeeded}/{verification.total} succeeded
-          </div>
-          <div className="text-xs text-gray-700">
-            {formatCredits(verification.creditsByProvider)}
-          </div>
-          {verification.failed > 0 && (
-            <div className="text-xs text-red-700">{verification.failed} failed</div>
-          )}
+    <Card className="shadow-sm">
+      <CardHeader>
+        <CardTitle>Pipeline completed</CardTitle>
+        <CardDescription>Bulk verification, enrichment, and gate evaluation results.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Card className="border bg-card shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Verification
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <p className="text-lg font-semibold tabular-nums">
+                {verification.succeeded}/{verification.total} succeeded
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {formatCredits(verification.creditsByProvider)}
+              </p>
+              {verification.failed > 0 ? (
+                <p className="text-xs text-rose-700">{verification.failed} failed</p>
+              ) : null}
+            </CardContent>
+          </Card>
+          <Card className="border bg-card shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Enrichment
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <p className="text-lg font-semibold tabular-nums">
+                {enrichment.enriched}/{enrichment.total} enriched
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {enrichment.conflictsFlagged} conflict
+                {enrichment.conflictsFlagged === 1 ? "" : "s"} flagged · {enrichment.noMatch}{" "}
+                no-match
+              </p>
+              {enrichment.skipped > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {enrichment.skipped} skipped (manual override)
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+          <Card className="border bg-card shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Gates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <p className="text-lg font-semibold tabular-nums">
+                {gates.promoted} promoted to gate_2
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {gates.downgraded} downgraded · {gates.quarantined} quarantined ·{" "}
+                {gates.unchanged} unchanged
+              </p>
+            </CardContent>
+          </Card>
         </div>
-
-        <div className="rounded border border-green-200 bg-white p-3">
-          <div className="text-xs uppercase tracking-wide text-gray-500">
-            Enrichment
-          </div>
-          <div className="mt-1 text-lg font-medium text-green-900 tabular-nums">
-            {enrichment.enriched}/{enrichment.total} enriched
-          </div>
-          <div className="text-xs text-gray-700">
-            {enrichment.conflictsFlagged} conflict
-            {enrichment.conflictsFlagged === 1 ? "" : "s"} flagged ·{" "}
-            {enrichment.noMatch} no-match
-          </div>
-          {enrichment.skipped > 0 && (
-            <div className="text-xs text-gray-700">
-              {enrichment.skipped} skipped (manual override)
-            </div>
-          )}
-        </div>
-
-        <div className="rounded border border-green-200 bg-white p-3">
-          <div className="text-xs uppercase tracking-wide text-gray-500">Gates</div>
-          <div className="mt-1 text-lg font-medium text-green-900 tabular-nums">
-            {gates.promoted} promoted to gate_2
-          </div>
-          <div className="text-xs text-gray-700">
-            {gates.downgraded} downgraded · {gates.quarantined} quarantined ·{" "}
-            {gates.unchanged} unchanged
-          </div>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={onRun}
-        disabled={loading}
-        className="mt-3 text-xs text-blue-700 hover:underline disabled:opacity-50"
-      >
-        {loading ? "Re-running pipeline…" : "Re-run pipeline"}
-      </button>
-      {error && <p className="mt-2 text-sm text-red-700">Error: {error}</p>}
-    </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRun}
+          disabled={loading}
+          className="gap-2"
+        >
+          {loading ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : null}
+          {loading ? "Re-running pipeline…" : "Re-run pipeline"}
+        </Button>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,38 +1,30 @@
+import { Archive, Building2, Lock } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { db } from "@/lib/db";
+import { getStatusVariant } from "@/lib/badge-helpers";
+import { cn } from "@/lib/utils";
 import ConflictCard, { type ConflictCardProps } from "./ConflictCard";
+import HardDeleteButton from "./HardDeleteButton";
 
-// Detail counts + freshly-resolved conflicts must reflect the very latest
-// write, so bypass the App Router cache.
 export const dynamic = "force-dynamic";
-
-const GATE_BADGE: Record<string, string> = {
-  gate_0: "bg-gray-100 text-gray-800",
-  gate_1: "bg-yellow-100 text-yellow-900",
-  gate_2: "bg-green-100 text-green-900",
-  gate_3: "bg-emerald-100 text-emerald-900",
-  quarantine: "bg-red-100 text-red-900",
-};
-
-const VERIFICATION_STATUS_BADGE: Record<string, string> = {
-  valid: "bg-green-100 text-green-800",
-  invalid: "bg-red-100 text-red-800",
-  risky: "bg-yellow-100 text-yellow-800",
-  unknown: "bg-yellow-100 text-yellow-800",
-  catch_all: "bg-yellow-100 text-yellow-800",
-  disposable: "bg-gray-100 text-gray-800",
-};
-
-const ENRICHMENT_STATUS_BADGE: Record<string, string> = {
-  success: "bg-green-100 text-green-800",
-  no_match: "bg-gray-100 text-gray-700",
-  conflict_pending: "bg-amber-100 text-amber-800",
-  conflict_resolved: "bg-blue-100 text-blue-800",
-  rate_limited: "bg-yellow-100 text-yellow-800",
-  error: "bg-red-100 text-red-800",
-  rolled_back: "bg-purple-100 text-purple-800",
-};
 
 function relativeTime(d: Date | null): string {
   if (!d) return "—";
@@ -67,7 +59,6 @@ type ConflictRaw = {
   delta: number;
 };
 
-/** Map the (primary | secondary) sides of a conflict row to (cognism | apollo). */
 function conflictToCardProps(
   enrichmentLogId: string,
   raw: string,
@@ -146,337 +137,404 @@ export default async function ContactDetailPage({
     )
     .filter((p): p is ConflictCardProps => p !== null);
 
+  const subtitleParts = [
+    contact.email ?? "—",
+    contact.title ?? "—",
+    contact.company?.legalName ? `at ${contact.company.legalName}` : null,
+  ].filter(Boolean);
+
   return (
-    <main className="min-h-screen max-w-6xl mx-auto p-8">
-      {survivor && (
-        <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          Soft-archived — merged into{" "}
-          <Link
-            href={`/admin/contacts/${survivor.id}`}
-            className="underline font-medium"
-          >
-            {survivor.person.fullName}
-          </Link>
-        </div>
-      )}
+    <div className="space-y-6">
+      {survivor ? (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+          <Archive className="size-4" />
+          <AlertTitle>Soft-archived</AlertTitle>
+          <AlertDescription>
+            Merged into{" "}
+            <Link
+              href={`/admin/contacts/${survivor.id}`}
+              className="font-medium underline underline-offset-4"
+            >
+              {survivor.person.fullName}
+            </Link>
+            .
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
-      {/* ---- Header card ---- */}
-      <div className="border rounded p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">{contact.person.fullName}</h1>
-            <p className="text-sm text-gray-600">
-              {contact.title ?? <span className="italic text-gray-400">(no title)</span>}
-              {contact.title && contact.company?.legalName ? " · " : ""}
-              {contact.company?.legalName}
-              {contact.company?.country ? ` (${contact.company.country})` : ""}
-            </p>
+      {contact.quarantineReason ? (
+        <Alert
+          variant="destructive"
+          className="border-rose-200 bg-rose-50 text-rose-900 [&>svg]:text-rose-700"
+        >
+          <Lock className="size-4" />
+          <AlertTitle>Quarantined</AlertTitle>
+          <AlertDescription>
+            This contact is quarantined:{" "}
+            <span className="font-medium">{contact.quarantineReason}</span>.{" "}
+            <Link
+              href={`/admin/quarantine?clientId=${contact.clientId}`}
+              className="font-medium underline underline-offset-4"
+            >
+              Review in quarantine queue →
+            </Link>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="text-2xl font-semibold tracking-tight">
+              {contact.person.fullName}
+            </CardTitle>
+            <p className="text-sm text-slate-600">{subtitleParts.join(" · ")}</p>
           </div>
-          <span
-            className={`text-xs px-2 py-1 rounded ${
-              GATE_BADGE[contact.gateStatus] ?? "bg-gray-100 text-gray-700"
-            }`}
-          >
-            {contact.gateStatus}
-          </span>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <dl className="space-y-1">
-            <div className="flex">
-              <dt className="w-32 text-gray-500">Email</dt>
-              <dd className="break-all">{contact.email ?? "—"}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-32 text-gray-500">Phone</dt>
-              <dd>{contact.phone ?? "—"}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-32 text-gray-500">LinkedIn</dt>
-              <dd className="break-all">
-                {contact.person.linkedinUrl ? (
-                  <a
-                    href={
-                      contact.person.linkedinUrl.startsWith("http")
-                        ? contact.person.linkedinUrl
-                        : `https://${contact.person.linkedinUrl}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-600 underline"
-                  >
-                    {contact.person.linkedinUrl}
-                  </a>
-                ) : (
-                  "—"
-                )}
-              </dd>
-            </div>
-            <div className="flex">
-              <dt className="w-32 text-gray-500">Seniority</dt>
-              <dd>{contact.seniority ?? "—"}</dd>
-            </div>
-          </dl>
-
-          <dl className="space-y-1">
-            <div className="flex">
-              <dt className="w-32 text-gray-500">Last verified</dt>
-              <dd className="tabular-nums">{relativeTime(contact.lastVerifiedAt)}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-32 text-gray-500">Last enriched</dt>
-              <dd className="tabular-nums">{relativeTime(contact.lastEnrichedAt)}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-32 text-gray-500">Write source</dt>
-              <dd>{contact.writeSource ?? "—"}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-32 text-gray-500">Lifecycle</dt>
-              <dd>{contact.lifecycleStage}</dd>
-            </div>
-          </dl>
-        </div>
-
-        {(contact.quarantineReason || contact.campaignActive) && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {contact.quarantineReason && (
-              <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded">
-                Quarantined: {contact.quarantineReason}
-              </span>
-            )}
-            {contact.campaignActive && (
-              <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className={getStatusVariant(contact.gateStatus)}>
+              {contact.gateStatus}
+            </Badge>
+            {contact.campaignActive ? (
+              <Badge className="border-transparent bg-blue-100 text-blue-800">
                 Campaign active
-              </span>
-            )}
+              </Badge>
+            ) : null}
           </div>
-        )}
-      </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="space-y-3 text-sm">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Identity
+              </h3>
+              <dl className="space-y-2">
+                <div className="flex gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Email</dt>
+                  <dd className="break-all">{contact.email ?? "—"}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Phone</dt>
+                  <dd>{contact.phone ?? "—"}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground">LinkedIn</dt>
+                  <dd className="break-all">
+                    {contact.person.linkedinUrl ? (
+                      <a
+                        href={
+                          contact.person.linkedinUrl.startsWith("http")
+                            ? contact.person.linkedinUrl
+                            : `https://${contact.person.linkedinUrl}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary underline-offset-4 hover:underline"
+                      >
+                        {contact.person.linkedinUrl}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Seniority</dt>
+                  <dd>{contact.seniority ?? "—"}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="space-y-3 text-sm">
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Building2 className="size-3.5" aria-hidden />
+                Company
+              </h3>
+              <dl className="space-y-2">
+                <div className="flex gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Name</dt>
+                  <dd className="font-medium">{contact.company?.legalName ?? "—"}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Country</dt>
+                  <dd>{contact.company?.country ?? "—"}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Domain</dt>
+                  <dd className="font-mono text-xs">
+                    {contact.company?.rootDomain ?? "—"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 border-t pt-4 text-xs text-muted-foreground">
+            <span>
+              Last verified:{" "}
+              <span className="font-medium text-foreground">
+                {relativeTime(contact.lastVerifiedAt)}
+              </span>
+            </span>
+            <span>
+              Last enriched:{" "}
+              <span className="font-medium text-foreground">
+                {relativeTime(contact.lastEnrichedAt)}
+              </span>
+            </span>
+            <span>
+              Write source:{" "}
+              <span className="font-medium text-foreground">
+                {contact.writeSource ?? "—"}
+              </span>
+            </span>
+            <span>
+              Lifecycle:{" "}
+              <span className="font-medium text-foreground">
+                {contact.lifecycleStage}
+              </span>
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* ---- Pending conflicts ---- */}
-      {pendingCards.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-lg font-semibold">
+      {pendingCards.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-xl font-semibold tracking-tight">
             Pending conflicts{" "}
-            <span className="text-sm font-normal text-gray-500">
+            <span className="text-sm font-normal text-muted-foreground">
               ({pendingCards.length})
             </span>
           </h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Provider responses disagreed and the confidence delta fell under
-            15%. Pick a survivor and record a reason; the resolution writes to
-            audit_log.
+          <p className="text-sm text-slate-600">
+            Provider responses disagreed and the confidence delta fell under 15%. Pick a
+            survivor and record a reason; the resolution writes to audit_log.
           </p>
-          <div className="mt-4">
+          <div className="space-y-4 pt-2">
             {pendingCards.map((card) => (
               <ConflictCard key={card.enrichmentLogId} {...card} />
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
-      {/* ---- Verification history ---- */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">
           Verification history{" "}
-          <span className="text-sm font-normal text-gray-500">
+          <span className="text-sm font-normal text-muted-foreground">
             ({verifications.length})
           </span>
         </h2>
-        <div className="mt-3 border rounded overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr className="text-left">
-                <th className="px-3 py-2 font-medium">When</th>
-                <th className="px-3 py-2 font-medium">Type</th>
-                <th className="px-3 py-2 font-medium">Provider</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Confidence</th>
-                <th className="px-3 py-2 font-medium">Credits</th>
-              </tr>
-            </thead>
-            <tbody>
-              {verifications.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-3 py-6 text-center text-sm text-gray-500"
-                  >
-                    No verifications yet.
-                  </td>
-                </tr>
-              ) : (
-                verifications.map((v) => (
-                  <tr key={v.id} className="border-b">
-                    <td className="px-3 py-2 text-gray-700 tabular-nums">
-                      {relativeTime(v.createdAt)}
-                    </td>
-                    <td className="px-3 py-2">{v.verificationType}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{v.provider}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`text-xs px-2 py-1 rounded ${
-                          VERIFICATION_STATUS_BADGE[v.status] ??
-                          "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {v.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {v.confidence !== null
-                        ? `${(v.confidence * 100).toFixed(0)}%`
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{v.creditsUsed}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <p className="text-sm text-slate-600">Email and phone verification events.</p>
+        <Card className="shadow-sm">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead className="text-right">Credits</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {verifications.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      No verifications yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  verifications.map((v) => (
+                    <TableRow key={v.id}>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {relativeTime(v.createdAt)}
+                      </TableCell>
+                      <TableCell>{v.verificationType}</TableCell>
+                      <TableCell className="font-mono text-xs">{v.provider}</TableCell>
+                      <TableCell>
+                        <Badge className={getStatusVariant(v.status)}>{v.status}</Badge>
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {v.confidence !== null
+                          ? `${(v.confidence * 100).toFixed(0)}%`
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {v.creditsUsed}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </section>
 
-      {/* ---- Enrichment history ---- */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">
           Enrichment history{" "}
-          <span className="text-sm font-normal text-gray-500">
+          <span className="text-sm font-normal text-muted-foreground">
             ({enrichmentLogs.length})
           </span>
         </h2>
-        <div className="mt-3 border rounded overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr className="text-left">
-                <th className="px-3 py-2 font-medium">When</th>
-                <th className="px-3 py-2 font-medium">Provider</th>
-                <th className="px-3 py-2 font-medium w-12">Step</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Confidence</th>
-                <th className="px-3 py-2 font-medium">Credits</th>
-                <th className="px-3 py-2 font-medium">Fields filled</th>
-              </tr>
-            </thead>
-            <tbody>
-              {enrichmentLogs.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-3 py-6 text-center text-sm text-gray-500"
-                  >
-                    No enrichment runs yet.
-                  </td>
-                </tr>
-              ) : (
-                enrichmentLogs.map((e) => {
-                  const fields = parseFieldsFilled(e.fieldsFilled);
-                  return (
-                    <tr key={e.id} className="border-b align-top">
-                      <td className="px-3 py-2 text-gray-700 tabular-nums">
-                        {relativeTime(e.createdAt)}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">{e.provider}</td>
-                      <td className="px-3 py-2 tabular-nums">{e.step}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${
-                            ENRICHMENT_STATUS_BADGE[e.status] ??
-                            "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          {e.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {e.confidence !== null
-                          ? `${(e.confidence * 100).toFixed(0)}%`
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">{e.creditsUsed}</td>
-                      <td className="px-3 py-2">
-                        {fields.length === 0 ? (
-                          <span className="text-gray-400">—</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {fields.map((f) => (
-                              <span
-                                key={f}
-                                className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-mono"
-                              >
-                                {f}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <p className="text-sm text-slate-600">Waterfall enrichment attempts per provider.</p>
+        <Card className="shadow-sm">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead className="w-12">Step</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead className="text-right">Credits</TableHead>
+                  <TableHead>Fields filled</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {enrichmentLogs.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      No enrichment runs yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  enrichmentLogs.map((e) => {
+                    const fields = parseFieldsFilled(e.fieldsFilled);
+                    return (
+                      <TableRow key={e.id} className="align-top">
+                        <TableCell className="tabular-nums text-muted-foreground">
+                          {relativeTime(e.createdAt)}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{e.provider}</TableCell>
+                        <TableCell className="tabular-nums">{e.step}</TableCell>
+                        <TableCell>
+                          <Badge className={getStatusVariant(e.status)}>{e.status}</Badge>
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          {e.confidence !== null
+                            ? `${(e.confidence * 100).toFixed(0)}%`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {e.creditsUsed}
+                        </TableCell>
+                        <TableCell>
+                          {fields.length === 0 ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {fields.map((f) => (
+                                <Badge
+                                  key={f}
+                                  variant="outline"
+                                  className="font-mono text-[10px]"
+                                >
+                                  {f}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </section>
 
-      {/* ---- Gate status history ---- */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">
           Gate status history{" "}
-          <span className="text-sm font-normal text-gray-500">
+          <span className="text-sm font-normal text-muted-foreground">
             ({gateHistory.length})
           </span>
         </h2>
-        <div className="mt-3 border rounded overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr className="text-left">
-                <th className="px-3 py-2 font-medium">When</th>
-                <th className="px-3 py-2 font-medium">From → To</th>
-                <th className="px-3 py-2 font-medium">Reason</th>
-                <th className="px-3 py-2 font-medium">Actor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {gateHistory.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-3 py-6 text-center text-sm text-gray-500"
-                  >
-                    No gate transitions recorded yet.
-                  </td>
-                </tr>
-              ) : (
-                gateHistory.map((h) => (
-                  <tr key={h.id} className="border-b">
-                    <td className="px-3 py-2 text-gray-700 tabular-nums">
-                      {relativeTime(h.createdAt)}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      <span className="font-mono text-xs">{h.fromGate ?? "—"}</span>
-                      <span className="mx-2 text-gray-400">→</span>
-                      <span className="font-mono text-xs">{h.toGate}</span>
-                    </td>
-                    <td className="px-3 py-2">{h.reason}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{h.actor}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <p className="text-sm text-slate-600">Lifecycle transitions and actors.</p>
+        <Card className="shadow-sm">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Transition</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Actor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {gateHistory.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      No gate transitions recorded yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  gateHistory.map((h) => (
+                    <TableRow key={h.id}>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {relativeTime(h.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                          <span className="text-muted-foreground">
+                            {h.fromGate ?? "—"}
+                          </span>
+                          <span className="text-muted-foreground">→</span>
+                          <Badge className={getStatusVariant(h.toGate)}>{h.toGate}</Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>{h.reason}</TableCell>
+                      <TableCell className="font-mono text-xs">{h.actor}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </section>
 
-      <p className="mt-8">
-        <Link
-          href="/admin/intake/batches"
-          className="text-blue-600 underline text-sm"
-        >
-          ← Back to all batches
-        </Link>
-      </p>
-    </main>
+      {!contact.mergedIntoId ? (
+        <section className="space-y-2">
+          <h2 className="text-xl font-semibold tracking-tight text-rose-900">Danger zone</h2>
+          <p className="text-sm text-slate-600">
+            Irreversible GDPR Article 17 hard delete — tombstones retained, audit logs kept.
+          </p>
+          <Card className={cn("border-rose-300 shadow-sm", "bg-card")}>
+            <CardHeader>
+              <CardTitle className="text-lg text-rose-900">Hard delete (GDPR Article 17)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-rose-900/90">
+              <p>
+                Permanently remove this contact and its identifying data. Hashed identifiers will
+                be preserved in the tombstones table to prevent re-import. Event logs
+                (verifications, enrichments, gates) are retained for audit purposes. This action
+                cannot be undone.
+              </p>
+              <HardDeleteButton />
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
+      <Button variant="link" asChild className="h-auto px-0">
+        <Link href="/admin/intake/batches">← Back to all batches</Link>
+      </Button>
+    </div>
   );
 }

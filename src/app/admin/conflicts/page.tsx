@@ -1,5 +1,20 @@
+import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { db } from "@/lib/db";
+import ConflictsClientFilter from "./ConflictsClientFilter";
 
 export const dynamic = "force-dynamic";
 
@@ -39,12 +54,15 @@ export default async function ConflictsQueuePage({
   });
   if (clients.length === 0) {
     return (
-      <main className="min-h-screen max-w-6xl mx-auto p-8">
-        <h1 className="text-2xl font-semibold">Resolve enrichment conflicts</h1>
-        <p className="mt-4 text-sm text-gray-600">
-          No clients found — run <code>npm run db:seed</code> first.
-        </p>
-      </main>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Enrichment conflicts</h1>
+          <p className="text-sm text-slate-600">
+            No clients found — run <code className="font-mono text-xs">npm run db:seed</code>{" "}
+            first.
+          </p>
+        </div>
+      </div>
     );
   }
   const currentClientId =
@@ -67,7 +85,7 @@ export default async function ConflictsQueuePage({
     ? await db.contact.findMany({
         where: { id: { in: contactIds } },
         include: {
-          person: { select: { fullName: true } },
+          person: { select: { fullName: true, primaryEmail: true } },
           company: { select: { legalName: true } },
         },
       })
@@ -77,120 +95,103 @@ export default async function ConflictsQueuePage({
   const distinctContacts = new Set(contactIds).size;
 
   return (
-    <main className="min-h-screen max-w-6xl mx-auto p-8">
-      <h1 className="text-2xl font-semibold">Resolve enrichment conflicts</h1>
-      <p className="mt-2 text-sm text-gray-600">
-        Module 3 — fields where Cognism and Apollo disagreed and the
-        confidence delta fell under 15%. Pick a survivor on the contact's
-        detail page.
-      </p>
-
-      {/* ---- Filter bar ---- */}
-      <div className="mt-6 flex items-center gap-3 text-sm">
-        <label className="text-gray-600">Client</label>
-        <form method="get" className="flex items-center gap-2">
-          <select
-            name="clientId"
-            defaultValue={currentClientId}
-            className="rounded border px-2 py-1 text-sm"
-          >
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="rounded bg-gray-100 hover:bg-gray-200 text-xs px-3 py-1"
-          >
-            Apply
-          </button>
-        </form>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Enrichment conflicts</h1>
+        <p className="text-sm text-slate-600">
+          Fields where Cognism and Apollo disagreed within the confidence-delta threshold.
+        </p>
       </div>
 
-      <p className="mt-4 text-sm text-gray-700">
-        <span className="tabular-nums font-medium">{rows.length}</span> conflict
-        {rows.length === 1 ? "" : "s"} pending across{" "}
-        <span className="tabular-nums font-medium">{distinctContacts}</span>{" "}
+      <ConflictsClientFilter clients={clients} currentClientId={currentClientId} />
+
+      <p className="text-sm text-slate-600">
+        <span className="font-semibold tabular-nums text-slate-900">{rows.length}</span>{" "}
+        conflict{rows.length === 1 ? "" : "s"} pending across{" "}
+        <span className="font-semibold tabular-nums text-slate-900">
+          {distinctContacts}
+        </span>{" "}
         contact{distinctContacts === 1 ? "" : "s"} in{" "}
-        <span className="font-medium">{currentClient.name}</span>.
+        <span className="font-medium text-slate-800">{currentClient.name}</span>.
       </p>
 
-      {/* ---- Conflicts table ---- */}
-      <div className="mt-4 border rounded overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr className="text-left">
-              <th className="px-3 py-2 font-medium">Contact</th>
-              <th className="px-3 py-2 font-medium">Company</th>
-              <th className="px-3 py-2 font-medium">Field</th>
-              <th className="px-3 py-2 font-medium">Detected</th>
-              <th className="px-3 py-2 font-medium w-20">Resolve</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-3 py-8 text-center text-sm text-gray-500"
-                >
-                  No conflicts pending in this client.
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => {
-                const c = r.contactId ? contactsById.get(r.contactId) : null;
-                const name = c?.person.fullName ?? "(missing contact)";
-                const company = c?.company.legalName ?? "—";
-                const field = parseField(r.rawResponse);
-                return (
-                  <tr key={r.id} className="border-b">
-                    <td className="px-3 py-2">
-                      {r.contactId ? (
-                        <Link
-                          href={`/admin/contacts/${r.contactId}`}
-                          className="text-blue-600 underline"
-                        >
-                          {name}
-                        </Link>
-                      ) : (
-                        name
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-gray-700">{company}</td>
-                    <td className="px-3 py-2">
-                      <code className="font-mono text-xs">{field}</code>
-                    </td>
-                    <td className="px-3 py-2 text-gray-700 tabular-nums">
-                      {relativeTime(r.createdAt)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.contactId ? (
-                        <Link
-                          href={`/admin/contacts/${r.contactId}#conflicts`}
-                          className="text-blue-600 underline text-xs"
-                        >
-                          Resolve →
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <p className="mt-6">
-        <Link href="/" className="text-blue-600 underline text-sm">
-          ← Back to home
-        </Link>
-      </p>
-    </main>
+      <Card className="shadow-sm">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Contact</TableHead>
+                <TableHead>Company</TableHead>
+                <TableHead>Field</TableHead>
+                <TableHead>Detected</TableHead>
+                <TableHead className="w-28"> </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-16">
+                    <div className="flex flex-col items-center justify-center gap-3 text-center">
+                      <CheckCircle2 className="size-12 text-emerald-400" aria-hidden />
+                      <p className="text-sm text-slate-600">
+                        All clear — no pending conflicts for this client.
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r) => {
+                  const c = r.contactId ? contactsById.get(r.contactId) : null;
+                  const name = c?.person.fullName ?? "(missing contact)";
+                  const company = c?.company.legalName ?? "—";
+                  const field = parseField(r.rawResponse);
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        {r.contactId ? (
+                          <div>
+                            <Link
+                              href={`/admin/contacts/${r.contactId}`}
+                              className="font-medium text-primary underline-offset-4 hover:underline"
+                            >
+                              {name}
+                            </Link>
+                            {c?.person.primaryEmail ?? c?.email ? (
+                              <div className="text-xs text-muted-foreground">
+                                {c?.person.primaryEmail ?? c?.email}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          name
+                        )}
+                      </TableCell>
+                      <TableCell className="text-slate-700">{company}</TableCell>
+                      <TableCell>
+                        <code className="font-mono text-xs">{field}</code>
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {relativeTime(r.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        {r.contactId ? (
+                          <Button variant="link" className="h-auto px-0" asChild>
+                            <Link href={`/admin/contacts/${r.contactId}#conflicts`}>
+                              Resolve →
+                            </Link>
+                          </Button>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

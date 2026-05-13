@@ -1,11 +1,29 @@
+import { ChevronRight } from "lucide-react";
 import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { db } from "@/lib/db";
+import { getStatusVariant } from "@/lib/badge-helpers";
 import PromoteSection, { type ExistingOutcome } from "./PromoteSection";
 import ProcessSection, { type PipelineSummary } from "./ProcessSection";
+import { StagingFilterTabs } from "./StagingFilterTabs";
 
-// Detail counts must reflect the very latest write, so bypass caching.
 export const dynamic = "force-dynamic";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -14,22 +32,6 @@ const SOURCE_LABELS: Record<string, string> = {
   spreadsheet: "Spreadsheet",
   vendor_export: "Vendor export",
   manual: "Manual",
-};
-
-const BATCH_STATUS_BADGE: Record<string, string> = {
-  uploaded: "bg-gray-100 text-gray-700",
-  parsing: "bg-gray-100 text-gray-700",
-  ready_for_review: "bg-blue-100 text-blue-800",
-  promoting: "bg-blue-100 text-blue-800",
-  completed: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-};
-
-const ROW_STATUS_BADGE: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  accepted: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-  promoted: "bg-blue-100 text-blue-800",
 };
 
 type FilterStatus = "all" | "accepted" | "rejected";
@@ -43,8 +45,6 @@ function prettyRaw(raw: string): string {
   try {
     return JSON.stringify(JSON.parse(raw), null, 2);
   } catch {
-    // Defensive: if a row was ever inserted with malformed JSON, surface the raw string
-    // rather than crashing the entire page render.
     return raw;
   }
 }
@@ -53,7 +53,6 @@ export default async function BatchDetailPage({
   params,
   searchParams,
 }: {
-  // Next.js 15+ App Router: dynamic route + searchParams arrive as Promises.
   params: Promise<{ id: string }>;
   searchParams: Promise<{ status?: string }>;
 }) {
@@ -98,8 +97,6 @@ export default async function BatchDetailPage({
     }),
   ]);
 
-  // Parse the most-recent batch_promoted audit entry into the 4 counts the
-  // PromoteSection renders on a completed batch. Null otherwise.
   let existingOutcome: ExistingOutcome | null = null;
   if (latestPromotedAudit?.afterState) {
     try {
@@ -118,12 +115,10 @@ export default async function BatchDetailPage({
         };
       }
     } catch {
-      // Malformed JSON in the audit row — render fall-back card without counts.
+      /* ignore */
     }
   }
 
-  // Parse the most-recent pipeline_completed audit entry into the
-  // PipelineSummary the ProcessSection renders.
   let existingPipelineResult: PipelineSummary | null = null;
   if (latestPipelineAudit?.afterState) {
     try {
@@ -137,11 +132,10 @@ export default async function BatchDetailPage({
         existingPipelineResult = parsed as PipelineSummary;
       }
     } catch {
-      // Malformed JSON — leave null; ProcessSection will offer to run anew.
+      /* ignore */
     }
   }
 
-  // Filter for the rows table only; counts + breakdown always use the full set.
   const rawStatus = (sp.status ?? "all").toLowerCase();
   const filter: FilterStatus =
     rawStatus === "accepted" || rawStatus === "rejected" ? rawStatus : "all";
@@ -156,7 +150,6 @@ export default async function BatchDetailPage({
     rejected: allRecords.filter((r) => r.status === "rejected").length,
   };
 
-  // Per-reason rollup, used to render the rejection pill row.
   const rejectionCounts: Record<string, number> = {};
   for (const r of allRecords) {
     if (r.status === "rejected" && r.rejectionReason) {
@@ -169,73 +162,76 @@ export default async function BatchDetailPage({
   );
 
   return (
-    <main className="min-h-screen max-w-6xl mx-auto p-8">
-      {/* ---- Header card ---- */}
-      <div className="border rounded p-6">
-        <h1 className="text-2xl font-semibold">{batch.fileName}</h1>
-        <p className="text-xs text-gray-500 mt-1">
-          {(batch.fileSizeBytes / 1024).toFixed(1)} KB · Batch{" "}
-          <code className="font-mono">{batch.id}</code>
-        </p>
+    <div className="space-y-6">
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="text-xl">{batch.fileName}</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {(batch.fileSizeBytes / 1024).toFixed(1)} KB · Batch{" "}
+              <code className="font-mono">{batch.id}</code>
+            </p>
+          </div>
+          <Badge className={getStatusVariant(batch.status)}>{batch.status}</Badge>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Client
+              </p>
+              <p className="mt-0.5 text-slate-900">{client?.name ?? batch.clientId}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Source
+              </p>
+              <p className="mt-0.5 text-slate-900">
+                {SOURCE_LABELS[batch.source] ?? batch.source}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Uploaded by
+              </p>
+              <p className="mt-0.5 text-slate-900">
+                {uploader?.fullName ?? batch.uploadedBy}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Uploaded at
+              </p>
+              <p className="mt-0.5 font-mono tabular-nums text-slate-900">
+                {formatDate(batch.startedAt)}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <span className="text-slate-600">
+              <span className="font-medium text-slate-900">Total:</span>{" "}
+              {batch.rowsTotal}
+            </span>
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-600">
+              <span className="font-medium text-slate-900">Accepted:</span>{" "}
+              {batch.rowsAccepted}
+            </span>
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-600">
+              <span className="font-medium text-slate-900">Rejected:</span>{" "}
+              {batch.rowsRejected}
+            </span>
+          </div>
+          {batch.sourceDetail ? (
+            <p className="text-xs text-muted-foreground">
+              Source detail: {batch.sourceDetail}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
 
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <dl className="space-y-1">
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Client</dt>
-              <dd>{client?.name ?? batch.clientId}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Source</dt>
-              <dd>{SOURCE_LABELS[batch.source] ?? batch.source}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Uploaded by</dt>
-              <dd>{uploader?.fullName ?? batch.uploadedBy}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Uploaded at</dt>
-              <dd className="tabular-nums">{formatDate(batch.startedAt)}</dd>
-            </div>
-          </dl>
-
-          <dl className="space-y-1">
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Total rows</dt>
-              <dd className="tabular-nums">{batch.rowsTotal}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Accepted</dt>
-              <dd className="tabular-nums text-green-700">{batch.rowsAccepted}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Rejected</dt>
-              <dd className="tabular-nums text-red-700">{batch.rowsRejected}</dd>
-            </div>
-            <div className="flex">
-              <dt className="w-28 text-gray-500">Status</dt>
-              <dd>
-                <span
-                  className={`text-xs px-2 py-1 rounded ${
-                    BATCH_STATUS_BADGE[batch.status] ??
-                    "bg-gray-100 text-gray-700"
-                  }`}
-                >
-                  {batch.status}
-                </span>
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        {batch.sourceDetail && (
-          <p className="mt-3 text-xs text-gray-500">
-            Source detail: {batch.sourceDetail}
-          </p>
-        )}
-      </div>
-
-      {/* ---- Promotion section (state-dependent card) ---- */}
-      <div className="mt-6">
+      <div className="space-y-4">
         <PromoteSection
           batchId={batch.id}
           status={batch.status}
@@ -243,8 +239,6 @@ export default async function BatchDetailPage({
           rowsPromoted={batch.rowsPromoted}
           existingOutcome={existingOutcome}
         />
-
-        {/* ---- Phase-4 pipeline section ---- */}
         <ProcessSection
           batchId={batch.id}
           batchStatus={batch.status}
@@ -254,157 +248,109 @@ export default async function BatchDetailPage({
         />
       </div>
 
-      {/* ---- Rejection breakdown pills ---- */}
-      {batch.rowsRejected > 0 && rejectionEntries.length > 0 && (
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-500">Rejection breakdown:</span>
+      {batch.rowsRejected > 0 && rejectionEntries.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-slate-500">
+            Rejection breakdown:
+          </span>
           {rejectionEntries.map(([reason, count]) => (
-            <span
-              key={reason}
-              className="bg-red-50 text-red-800 text-xs px-2 py-1 rounded"
-            >
+            <Badge key={reason} className={getStatusVariant("rejected")}>
               {reason}: {count}
-            </span>
+            </Badge>
           ))}
         </div>
-      )}
+      ) : null}
 
-      {/* ---- Filter tabs ---- */}
-      <nav className="mt-6 flex items-center gap-4 text-sm border-b">
-        {(
-          [
-            ["all", "All", counts.all],
-            ["accepted", "Accepted", counts.accepted],
-            ["rejected", "Rejected", counts.rejected],
-          ] as const
-        ).map(([value, label, count]) => {
-          const isActive = filter === value;
-          const href =
-            value === "all"
-              ? `/admin/intake/batches/${batch.id}`
-              : `/admin/intake/batches/${batch.id}?status=${value}`;
-          return (
-            <Link
-              key={value}
-              href={href}
-              className={`pb-2 -mb-px border-b-2 ${
-                isActive
-                  ? "border-blue-600 text-gray-900 font-medium"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {label} <span className="tabular-nums text-gray-500">({count})</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <StagingFilterTabs batchId={batch.id} filter={filter} counts={counts} />
 
-      {/* ---- Rows table ---- */}
-      <div className="mt-4 border rounded overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr className="text-left">
-              <th className="px-3 py-2 font-medium w-12">#</th>
-              <th className="px-3 py-2 font-medium w-24">Status</th>
-              <th className="px-3 py-2 font-medium">Email</th>
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="px-3 py-2 font-medium">Company</th>
-              <th className="px-3 py-2 font-medium">Title</th>
-              <th className="px-3 py-2 font-medium w-16">Country</th>
-              <th className="px-3 py-2 font-medium">Rejection reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={8}
-                  className="px-3 py-6 text-center text-sm text-gray-500"
-                >
-                  No rows match this filter.
-                </td>
-              </tr>
-            ) : (
-              records.map((r) => (
-                <Fragment key={r.id}>
-                  <tr className="border-b">
-                    <td className="px-3 py-2 tabular-nums text-gray-500">
-                      {r.rowNumber}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`text-xs px-2 py-1 rounded ${
-                          ROW_STATUS_BADGE[r.status] ??
-                          "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-800">
-                      {r.status === "promoted" && r.promotedContactId ? (
-                        <Link
-                          href={`/admin/contacts/${r.promotedContactId}`}
-                          className="text-blue-600 underline"
-                        >
-                          {r.candidateEmail ?? "(no email)"}
-                        </Link>
-                      ) : (
-                        (r.candidateEmail ?? "—")
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-gray-800">
-                      {r.candidateFullName ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-gray-800">
-                      {r.candidateCompanyName ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-gray-800">
-                      {r.candidateTitle ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-gray-800">
-                      {r.candidateCountry ?? "—"}
-                    </td>
-                    <td
-                      className={`px-3 py-2 ${
-                        r.rejectionReason ? "text-red-700" : "text-gray-400"
-                      }`}
-                    >
-                      {r.rejectionReason ?? "—"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colSpan={8} className="p-0">
-                      <details className="border-t bg-gray-50">
-                        <summary className="cursor-pointer px-4 py-2 text-xs text-gray-600">
-                          Raw CSV values + rejection detail
-                        </summary>
-                        <pre className="p-4 text-xs overflow-auto">
-                          {prettyRaw(r.rawValues)}
-                        </pre>
-                        {r.rejectionDetail && (
-                          <p className="px-4 pb-3 text-xs text-red-700">
-                            Detail: {r.rejectionDetail}
-                          </p>
+      <Card className="shadow-sm">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12">#</TableHead>
+                <TableHead className="w-28">Status</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Company</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead className="w-16">Country</TableHead>
+                <TableHead>Rejection reason</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {records.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="py-10 text-center text-sm text-muted-foreground"
+                  >
+                    No rows match this filter.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                records.map((r) => (
+                  <Fragment key={r.id}>
+                    <TableRow>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {r.rowNumber}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getStatusVariant(r.status)}>{r.status}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {r.status === "promoted" && r.promotedContactId ? (
+                          <Link
+                            href={`/admin/contacts/${r.promotedContactId}`}
+                            className="font-medium text-primary underline-offset-4 hover:underline"
+                          >
+                            {r.candidateEmail ?? "(no email)"}
+                          </Link>
+                        ) : (
+                          (r.candidateEmail ?? "—")
                         )}
-                      </details>
-                    </td>
-                  </tr>
-                </Fragment>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                      </TableCell>
+                      <TableCell>{r.candidateFullName ?? "—"}</TableCell>
+                      <TableCell>{r.candidateCompanyName ?? "—"}</TableCell>
+                      <TableCell>{r.candidateTitle ?? "—"}</TableCell>
+                      <TableCell>{r.candidateCountry ?? "—"}</TableCell>
+                      <TableCell
+                        className={
+                          r.rejectionReason ? "text-rose-700" : "text-muted-foreground"
+                        }
+                      >
+                        {r.rejectionReason ?? "—"}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell colSpan={8} className="p-0">
+                        <details className="group border-t bg-muted/30">
+                          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
+                            <ChevronRight className="size-4 shrink-0 transition-transform group-open:rotate-90" />
+                            Raw values
+                          </summary>
+                          <pre className="max-h-64 overflow-auto p-4 text-xs">
+                            {prettyRaw(r.rawValues)}
+                          </pre>
+                          {r.rejectionDetail ? (
+                            <p className="px-4 pb-3 text-xs text-rose-700">
+                              Detail: {r.rejectionDetail}
+                            </p>
+                          ) : null}
+                        </details>
+                      </TableCell>
+                    </TableRow>
+                  </Fragment>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-      <p className="mt-6">
-        <Link
-          href="/admin/intake/batches"
-          className="text-blue-600 underline text-sm"
-        >
-          ← Back to all batches
-        </Link>
-      </p>
-    </main>
+      <Button variant="link" asChild className="h-auto px-0">
+        <Link href="/admin/intake/batches">← Back to all batches</Link>
+      </Button>
+    </div>
   );
 }

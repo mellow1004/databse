@@ -2,16 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   suppressionId: string;
 };
 
-/**
- * Per-row "Release" trigger. Asks for a reason via window.prompt so the
- * action stays auditable. On success the server component is refreshed and
- * the row flips into its released-state rendering.
- */
 export default function ReleaseButton({ suppressionId }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -19,7 +15,7 @@ export default function ReleaseButton({ suppressionId }: Props) {
 
   async function onClick() {
     const reason = window.prompt("Reason for releasing this suppression:");
-    if (reason === null) return; // user cancelled
+    if (reason === null) return;
     const trimmed = reason.trim();
     if (!trimmed) {
       setError("A non-empty reason is required.");
@@ -47,16 +43,17 @@ export default function ReleaseButton({ suppressionId }: Props) {
   }
 
   return (
-    <span className="inline-flex items-center gap-2">
-      <button
+    <div className="flex flex-col items-start gap-1">
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={onClick}
         disabled={loading}
-        className="text-xs text-red-700 hover:text-red-800 underline disabled:opacity-50"
       >
         {loading ? "Releasing…" : "Release"}
-      </button>
-      {error && <span className="text-xs text-red-700">{error}</span>}
-    </span>
+      </Button>
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </div>
   );
 }
