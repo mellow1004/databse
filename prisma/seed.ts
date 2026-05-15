@@ -1132,9 +1132,25 @@ async function seedAuditLog(clients: SeededClient[], users: SeededUser[]) {
 // Main
 // ============================================================
 
-async function main() {
-  console.log("Brightvision Master Database — Seed");
-  console.log("====================================");
+const PROVIDER_COUNT = 6;
+
+export type RunFullSeedResult = {
+  clients: number;
+  users: number;
+  providers: number;
+  companies: number;
+  contacts: number;
+  quarantined: number;
+  suppressions: number;
+  tombstones: number;
+};
+
+/** Disconnect the seed script's Prisma client (e.g. after API reset). */
+export async function disconnectSeedDatabase(): Promise<void> {
+  await db.$disconnect();
+}
+
+export async function runFullSeed(): Promise<RunFullSeedResult> {
   await wipe();
 
   const clients = await seedClients();
@@ -1166,7 +1182,11 @@ async function main() {
     verificationsCount += r.verifications;
   }
 
-  const ccrCount = await seedContactCompanyRelationships(clients, companiesByClient, contactsByClient);
+  const ccrCount = await seedContactCompanyRelationships(
+    clients,
+    companiesByClient,
+    contactsByClient,
+  );
   const scenarioResult = await seedScenarios(clients, companiesByClient, contactsByClient);
   contactsCount += scenarioResult.extraContacts;
   companiesCount += scenarioResult.extraCompanies;
@@ -1174,21 +1194,45 @@ async function main() {
   const supTomb = await seedSuppressionsAndTombstones(clients);
   const auditCount = await seedAuditLog(clients, users);
 
-  console.log("====================================");
-  console.log(
-    `Seed complete: ${clients.length} clients, ${users.length} users, 6 providers, ${companiesCount} companies, ${contactsCount} contacts, ${scenarioResult.quarantined} quarantined, ${supTomb.suppressions} suppressions, ${supTomb.tombstones} tombstones.`,
-  );
   console.log(
     `(also: ${aliasesCount} domain_aliases, ${personsCount} persons, ${ccrCount} contact_company_relationships, ${verificationsCount} verifications, ${scenarioResult.enrichmentLogs} enrichment_logs, ${auditCount} audit_log)`,
   );
+
+  return {
+    clients: clients.length,
+    users: users.length,
+    providers: PROVIDER_COUNT,
+    companies: companiesCount,
+    contacts: contactsCount,
+    quarantined: scenarioResult.quarantined,
+    suppressions: supTomb.suppressions,
+    tombstones: supTomb.tombstones,
+  };
 }
 
-main()
-  .then(async () => {
-    await db.$disconnect();
-  })
-  .catch(async (e) => {
-    console.error(e);
-    await db.$disconnect();
-    process.exit(1);
-  });
+async function main() {
+  console.log("Brightvision Master Database — Seed");
+  console.log("====================================");
+  const summary = await runFullSeed();
+  console.log("====================================");
+  console.log(
+    `Seed complete: ${summary.clients} clients, ${summary.users} users, ${summary.providers} providers, ${summary.companies} companies, ${summary.contacts} contacts, ${summary.quarantined} quarantined, ${summary.suppressions} suppressions, ${summary.tombstones} tombstones.`,
+  );
+}
+
+function isDirectSeedCliRun(): boolean {
+  const entry = process.argv[1]?.replace(/\\/g, "/") ?? "";
+  return entry.endsWith("prisma/seed.ts");
+}
+
+if (isDirectSeedCliRun()) {
+  main()
+    .then(async () => {
+      await db.$disconnect();
+    })
+    .catch(async (e) => {
+      console.error(e);
+      await db.$disconnect();
+      process.exit(1);
+    });
+}

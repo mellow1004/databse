@@ -389,6 +389,14 @@ export default async function AdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <p className="text-center text-xs text-slate-500">
+        Live demo?{" "}
+        <Link href="/admin/demo-controls" className="text-primary underline-offset-2 hover:underline">
+          Visit Demo controls
+        </Link>{" "}
+        to reset state or read the walkthrough script.
+      </p>
     </div>
   );
 }

@@ -9,10 +9,12 @@ import {
   Layers,
   Lock,
   Radio,
+  RotateCw,
   Scale,
   Shield,
   Upload,
   User,
+  Wand2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -38,6 +40,8 @@ export function AppSidebar() {
   const isPlatformSim = pathname.startsWith("/admin/platform-sim");
   const isAnalytics = pathname.startsWith("/admin/analytics");
   const isBiasMonitoring = pathname.startsWith("/admin/bias-monitoring");
+  const isRefreshCycle = pathname.startsWith("/admin/refresh-cycle");
+  const isDemoControls = pathname.startsWith("/admin/demo-controls");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -162,14 +166,30 @@ export function AppSidebar() {
             <BarChart3 size={16} aria-hidden />
             Accuracy QA
           </Link>
+          <Link
+            href="/admin/refresh-cycle"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isRefreshCycle)}`}
+          >
+            <RotateCw size={16} aria-hidden />
+            Refresh cycle
+          </Link>
         </div>
       </nav>
 
-      <div className="mt-auto border-t border-slate-200 px-4 py-4">
-        <p className="text-xs text-slate-400">
-          Brightvision GTME Ops · v0.1 (Demo)
-        </p>
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+      <div className="mt-auto border-t border-slate-200 px-3 py-4">
+        <Link
+          href="/admin/demo-controls"
+          className={`mb-3 flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium ${
+            isDemoControls
+              ? "border-amber-300 bg-amber-100 text-amber-900"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+          }`}
+        >
+          <Wand2 size={14} aria-hidden />
+          Demo controls
+        </Link>
+        <p className="px-1 text-xs text-slate-400">Brightvision GTME Ops · v0.1 (Demo)</p>
+        <div className="mt-3 flex items-center gap-2 px-1 text-xs text-slate-600">
           <User size={14} className="shrink-0 text-slate-400" aria-hidden />
           <span>Olivia Lindberg · Data Owner</span>
         </div>
