@@ -9,6 +9,7 @@ import {
   Layers,
   Lock,
   Radio,
+  Scale,
   Shield,
   Upload,
   User,
@@ -35,6 +36,8 @@ export function AppSidebar() {
   const isQuarantine = pathname.startsWith("/admin/quarantine");
   const isAccuracy = pathname.startsWith("/admin/accuracy");
   const isPlatformSim = pathname.startsWith("/admin/platform-sim");
+  const isAnalytics = pathname.startsWith("/admin/analytics");
+  const isBiasMonitoring = pathname.startsWith("/admin/bias-monitoring");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -111,6 +114,26 @@ export function AppSidebar() {
           >
             <Radio size={16} aria-hidden />
             Platform simulator
+          </Link>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Module 6 — Reporting
+          </p>
+          <Link
+            href="/admin/analytics"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isAnalytics)}`}
+          >
+            <BarChart3 size={16} aria-hidden />
+            Analytics
+          </Link>
+          <Link
+            href="/admin/bias-monitoring"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isBiasMonitoring)}`}
+          >
+            <Scale size={16} aria-hidden />
+            Bias monitoring
           </Link>
         </div>
 
