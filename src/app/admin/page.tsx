@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { db } from "@/lib/db";
@@ -123,6 +124,7 @@ export default async function AdminDashboardPage() {
     lastCompletedBatch,
     cognismAccuracy,
     apolloAccuracy,
+    dsarApproachingDeadline,
   ] = await Promise.all([
     db.contact.count({ where: { mergedIntoId: null } }),
     db.contact.count({
@@ -153,6 +155,12 @@ export default async function AdminDashboardPage() {
     }),
     latestAccuracyRate("cognism"),
     latestAccuracyRate("apollo"),
+    db.dsarCase.count({
+      where: {
+        status: { not: "completed" },
+        deadlineAt: { lt: new Date(Date.now() + 7 * 86_400_000) },
+      },
+    }),
   ]);
 
   const batchIds = [
@@ -225,6 +233,18 @@ export default async function AdminDashboardPage() {
         </p>
       </div>
       <Separator />
+
+      {dsarApproachingDeadline > 0 ? (
+        <Alert variant="destructive">
+          <AlertTriangle className="size-4" />
+          <AlertDescription>
+            {dsarApproachingDeadline} DSAR case(s) approaching the 30-day deadline.{" "}
+            <Link href="/admin/dsar?filter=overdue" className="font-medium underline underline-offset-4">
+              Review now →
+            </Link>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <Card className="border-primary/20 bg-primary/5 shadow-sm">
         <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">

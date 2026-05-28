@@ -37,6 +37,10 @@ export function getStatusVariant(status: string | null | undefined): string {
     return EMERALD;
   }
 
+  if (s === "open" || s === "in_progress" || s === "awaiting_subject") {
+    return BLUE;
+  }
+
   if (s === "released" || s === "reviewed") {
     return s === "reviewed" ? BLUE : SLATE;
   }

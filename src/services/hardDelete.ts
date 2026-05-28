@@ -9,10 +9,18 @@ const PROPAGATION_LOG = {
   subProcessors: "deletion_notices_queued",
 } as const;
 
+const DSAR_PROPAGATION_LOG = {
+  tombstoneTable: "complete",
+  aiTrainingDataset: "pending_manual_confirmation",
+  aiSdrPlatform: "pending_manual_confirmation",
+  subProcessors: "pending_manual_confirmation",
+} as const;
+
 export type HardDeleteInput = {
   contactId: string;
   reason: string;
   actorUserId: string;
+  dsarCaseId?: string;
   deletionReason:
     | "dsar_article_17"
     | "retention_lifecycle"
@@ -26,7 +34,7 @@ export type HardDeleteOutput = {
   personDeleted: boolean;
   tombstonesCreated: Array<{ hashType: string; hashValue: string }>;
   relationshipsRemoved: number;
-  propagationLog: typeof PROPAGATION_LOG;
+  propagationLog: typeof PROPAGATION_LOG | typeof DSAR_PROPAGATION_LOG;
 };
 
 const DELETION_REASONS = new Set<string>([
@@ -82,6 +90,7 @@ export async function hardDeleteContact(input: HardDeleteInput): Promise<HardDel
   if (!DELETION_REASONS.has(input.deletionReason)) {
     throw new Error(`Invalid deletionReason: ${input.deletionReason}`);
   }
+  const propagationLog = input.dsarCaseId ? DSAR_PROPAGATION_LOG : PROPAGATION_LOG;
 
   const contact = await db.contact.findUnique({
     where: { id: input.contactId },
@@ -172,7 +181,8 @@ export async function hardDeleteContact(input: HardDeleteInput): Promise<HardDel
         recordsAffected: 1 + (personDeleted ? 1 : 0),
         beforeState,
         afterState: JSON.stringify({
-          propagationLog: PROPAGATION_LOG,
+          dsarCaseId: input.dsarCaseId ?? null,
+          propagationLog,
           tombstonesUpserted: tombstonesCreated.length,
           relationshipsRemoved,
           personDeleted,
@@ -187,6 +197,6 @@ export async function hardDeleteContact(input: HardDeleteInput): Promise<HardDel
     personDeleted,
     tombstonesCreated,
     relationshipsRemoved,
-    propagationLog: PROPAGATION_LOG,
+    propagationLog,
   };
 }

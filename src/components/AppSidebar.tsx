@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  FileSearch,
   GitMerge,
   LayoutDashboard,
   Layers,
@@ -42,6 +43,7 @@ export function AppSidebar() {
   const isBiasMonitoring = pathname.startsWith("/admin/bias-monitoring");
   const isRefreshCycle = pathname.startsWith("/admin/refresh-cycle");
   const isDemoControls = pathname.startsWith("/admin/demo-controls");
+  const isDsar = pathname.startsWith("/admin/dsar");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -172,6 +174,13 @@ export function AppSidebar() {
           >
             <RotateCw size={16} aria-hidden />
             Refresh cycle
+          </Link>
+          <Link
+            href="/admin/dsar"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isDsar)}`}
+          >
+            <FileSearch size={16} aria-hidden />
+            DSAR cases
           </Link>
         </div>
       </nav>

@@ -52,6 +52,62 @@ function parseFieldsFilled(raw: string): string[] {
   }
 }
 
+function humanizeLawfulBasis(v: string | null): string {
+  if (!v) return "Not set";
+  if (v === "legitimate_interest") return "Legitimate interest";
+  if (v === "consent") return "Consent";
+  if (v === "contract") return "Contract";
+  if (v === "legal_obligation") return "Legal obligation";
+  return v;
+}
+
+function humanizePurpose(v: string | null): string {
+  if (!v) return "Not set";
+  if (v === "b2b_prospecting") return "B2B prospecting";
+  if (v === "campaign_execution") return "Campaign execution";
+  if (v === "analytics") return "Analytics";
+  return v;
+}
+
+function humanizeMarket(v: string | null): string {
+  if (!v) return "Not set";
+  if (v === "uk_nordics") return "UK & Nordics";
+  if (v === "north_america") return "North America";
+  if (v === "dach") return "DACH";
+  if (v === "benelux") return "Benelux";
+  return "Other";
+}
+
+function humanizeRetention(v: string | null): string {
+  if (!v) return "Not set";
+  if (v === "approaching_review") return "Approaching review";
+  if (v === "anonymisation_queued") return "Anonymisation queued";
+  if (v === "anonymised") return "Anonymised";
+  return "Active";
+}
+
+function badgeForLiaStatus(v: string | null): string {
+  if (v === "documented") return "border-transparent bg-emerald-100 text-emerald-800";
+  if (v === "pending_review") return "border-transparent bg-amber-100 text-amber-800";
+  if (v === "expired") return "border-transparent bg-rose-100 text-rose-800";
+  return "border-transparent bg-slate-100 text-slate-700";
+}
+
+function badgeForSensitivity(v: string | null): string {
+  if (v === "public") return "border-transparent bg-emerald-100 text-emerald-800";
+  if (v === "business_contact") return "border-transparent bg-slate-100 text-slate-700";
+  if (v === "personal") return "border-transparent bg-amber-100 text-amber-800";
+  return "border-transparent bg-slate-100 text-slate-700";
+}
+
+function badgeForRetention(v: string | null): string {
+  if (v === "active") return "border-transparent bg-emerald-100 text-emerald-800";
+  if (v === "approaching_review") return "border-transparent bg-amber-100 text-amber-800";
+  if (v === "anonymisation_queued") return "border-transparent bg-rose-100 text-rose-800";
+  if (v === "anonymised") return "border-transparent bg-slate-100 text-slate-700";
+  return "border-transparent bg-slate-100 text-slate-700";
+}
+
 type ConflictRaw = {
   field: string;
   primary: { provider: string; value: string | null; confidence: number };
@@ -291,6 +347,76 @@ export default async function ContactDetailPage({
                 {contact.lifecycleStage}
               </span>
             </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Lawful basis &amp; retention</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+          <div>
+            <p className="text-muted-foreground">Lawful basis</p>
+            <p className={contact.lawfulBasis ? "" : "text-muted-foreground"}>{humanizeLawfulBasis(contact.lawfulBasis)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Processing purpose</p>
+            <p className={contact.processingPurpose ? "" : "text-muted-foreground"}>{humanizePurpose(contact.processingPurpose)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">LIA status</p>
+            {contact.liaStatus ? (
+              <Badge className={badgeForLiaStatus(contact.liaStatus)}>
+                {contact.liaStatus === "documented"
+                  ? "Documented"
+                  : contact.liaStatus === "pending_review"
+                    ? "Pending review"
+                    : "Expired"}
+              </Badge>
+            ) : (
+              <p className="text-muted-foreground">Not set</p>
+            )}
+          </div>
+          <div>
+            <p className="text-muted-foreground">LIA completed</p>
+            <p className={contact.liaCompletedAt ? "" : "text-muted-foreground"}>
+              {contact.liaCompletedAt ? relativeTime(contact.liaCompletedAt) : "Not set"}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Market</p>
+            <p className={contact.market ? "" : "text-muted-foreground"}>{humanizeMarket(contact.market)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Sensitivity tier</p>
+            {contact.sensitivityTier ? (
+              <Badge className={badgeForSensitivity(contact.sensitivityTier)}>
+                {contact.sensitivityTier === "business_contact"
+                  ? "Business contact"
+                  : contact.sensitivityTier === "personal"
+                    ? "Personal"
+                    : "Public"}
+              </Badge>
+            ) : (
+              <p className="text-muted-foreground">Not set</p>
+            )}
+          </div>
+          <div>
+            <p className="text-muted-foreground">Retention status</p>
+            {contact.retentionStatus ? (
+              <Badge className={badgeForRetention(contact.retentionStatus)}>
+                {humanizeRetention(contact.retentionStatus)}
+              </Badge>
+            ) : (
+              <p className="text-muted-foreground">Not set</p>
+            )}
+          </div>
+          <div>
+            <p className="text-muted-foreground">Retention review due</p>
+            <p className={contact.retentionReviewDueAt ? "" : "text-muted-foreground"}>
+              {contact.retentionReviewDueAt ? relativeTime(contact.retentionReviewDueAt) : "—"}
+            </p>
           </div>
         </CardContent>
       </Card>
