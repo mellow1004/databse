@@ -304,10 +304,7 @@ export default async function AdminDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Welcome back, Olivia</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Overview of the Brightvision master database
-        </p>
+        <p className="text-sm text-slate-600">Overview of the Brightvision master database</p>
       </div>
       <Separator />
 

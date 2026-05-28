@@ -31,6 +31,7 @@ import DrawSampleButton from "./DrawSampleButton";
 import SampleReviewButtons from "./SampleReviewButtons";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 50;
 
 const PROVIDERS = ["cognism", "apollo"] as const;
 
@@ -56,7 +57,7 @@ function alertLabel(level: "ok" | "investigation" | "demotion" | "insufficient_d
 export default async function AccuracyQAPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clientId?: string; provider?: string }>;
+  searchParams: Promise<{ clientId?: string; provider?: string; page?: string }>;
 }) {
   const sp = await searchParams;
 
@@ -69,7 +70,6 @@ export default async function AccuracyQAPage({
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Accuracy QA</h1>
           <p className="text-sm text-slate-600">No clients — run seed first.</p>
         </div>
       </div>
@@ -87,6 +87,8 @@ export default async function AccuracyQAPage({
   const p = (sp.provider ?? "cognism").toLowerCase();
   const selectedProvider: "cognism" | "apollo" =
     p === "apollo" ? "apollo" : "cognism";
+  const pageNum = Number(sp.page ?? "1");
+  const page = Number.isFinite(pageNum) && pageNum > 0 ? pageNum : 1;
 
   const currentClient = clients.find((c) => c.id === selectedClientId)!;
 
@@ -111,15 +113,21 @@ export default async function AccuracyQAPage({
     }),
   );
 
-  const pendingSamples = await db.accuracySample.findMany({
-    where: {
-      clientId: selectedClientId,
-      provider: selectedProvider,
-      reviewedAt: null,
-    },
-    orderBy: { sampledAt: "desc" },
-    take: 500,
-  });
+  const pendingWhere = {
+    clientId: selectedClientId,
+    provider: selectedProvider,
+    reviewedAt: null as null,
+  };
+  const [pendingSamples, pendingTotal] = await Promise.all([
+    db.accuracySample.findMany({
+      where: pendingWhere,
+      orderBy: { sampledAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    db.accuracySample.count({ where: pendingWhere }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(pendingTotal / PAGE_SIZE));
 
   const pendContactIds = Array.from(
     new Set(pendingSamples.map((s) => s.contactId)),
@@ -140,7 +148,6 @@ export default async function AccuracyQAPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Accuracy QA</h1>
         <p className="text-sm text-slate-600">
           Per-provider sampling to catch systemic drift. 1% of gate_2, with 50 floor / 200
           cap.
@@ -259,7 +266,7 @@ export default async function AccuracyQAPage({
                         <TableCell className="tabular-nums text-xs text-muted-foreground">
                           {relativeTime(s.sampledAt)}
                         </TableCell>
-                        <TableCell>
+                      <TableCell className="text-right">
                           <SampleReviewButtons sampleId={s.id} />
                         </TableCell>
                       </TableRow>
@@ -270,6 +277,25 @@ export default async function AccuracyQAPage({
             </Table>
           </CardContent>
         </Card>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <Link
+              href={`?clientId=${encodeURIComponent(selectedClientId)}&provider=${encodeURIComponent(selectedProvider)}&page=${Math.max(1, page - 1)}`}
+              className={`rounded border px-3 py-1 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+            >
+              Prev
+            </Link>
+            <Link
+              href={`?clientId=${encodeURIComponent(selectedClientId)}&provider=${encodeURIComponent(selectedProvider)}&page=${Math.min(totalPages, page + 1)}`}
+              className={`rounded border px-3 py-1 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+            >
+              Next
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section className="space-y-3">

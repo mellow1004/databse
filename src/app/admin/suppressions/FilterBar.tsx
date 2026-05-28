@@ -2,7 +2,6 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -51,8 +50,8 @@ export default function FilterBar({
   }
 
   return (
-    <Card className="sticky top-0 z-10 shadow-sm">
-      <CardContent className="flex flex-wrap items-end gap-6 pt-6">
+    <div className="sticky top-0 z-10 -mx-6 mb-4 border-b bg-slate-50 px-6 py-3">
+      <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-2">
           <Label>Client</Label>
           <Select
@@ -62,7 +61,7 @@ export default function FilterBar({
               push({ clientId: v === "__all__" ? "" : v })
             }
           >
-            <SelectTrigger className="w-[220px]">
+            <SelectTrigger className="h-8 w-[220px]">
               <SelectValue placeholder="All clients" />
             </SelectTrigger>
             <SelectContent>
@@ -82,7 +81,7 @@ export default function FilterBar({
             disabled={pending}
             onValueChange={(v) => push({ scope: v })}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="h-8 w-[180px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -100,7 +99,7 @@ export default function FilterBar({
             disabled={pending}
             onValueChange={(v) => push({ status: v })}
           >
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="h-8 w-[160px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -110,7 +109,7 @@ export default function FilterBar({
             </SelectContent>
           </Select>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

@@ -27,31 +27,33 @@ export default function ConflictsClientFilter({
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="flex flex-wrap items-end gap-4">
-      <div className="space-y-2">
-        <Label htmlFor="conflict-client">Client</Label>
-        <Select
-          value={currentClientId}
-          disabled={pending}
-          onValueChange={(clientId) => {
-            startTransition(() => {
-              const q = new URLSearchParams();
-              q.set("clientId", clientId);
-              router.push(`${pathname}?${q.toString()}`);
-            });
-          }}
-        >
-          <SelectTrigger id="conflict-client" className="w-[240px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {clients.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <div className="sticky top-0 z-10 -mx-6 mb-4 border-b bg-slate-50 px-6 py-3">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="conflict-client">Client</Label>
+          <Select
+            value={currentClientId}
+            disabled={pending}
+            onValueChange={(clientId) => {
+              startTransition(() => {
+                const q = new URLSearchParams();
+                q.set("clientId", clientId);
+                router.push(`${pathname}?${q.toString()}`);
+              });
+            }}
+          >
+            <SelectTrigger id="conflict-client" className="h-8 w-[240px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     </div>
   );

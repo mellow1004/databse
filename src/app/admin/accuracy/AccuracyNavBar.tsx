@@ -2,7 +2,6 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useTransition } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -44,8 +43,8 @@ export default function AccuracyNavBar({
   }
 
   return (
-    <Card className="sticky top-0 z-10 shadow-sm">
-      <CardContent className="flex flex-wrap items-end gap-6 pt-6">
+    <div className="sticky top-0 z-10 -mx-6 mb-4 border-b bg-slate-50 px-6 py-3">
+      <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-2">
           <Label>Client</Label>
           <Select
@@ -53,7 +52,7 @@ export default function AccuracyNavBar({
             disabled={pending}
             onValueChange={(v) => push({ clientId: v })}
           >
-            <SelectTrigger className="w-[220px]">
+            <SelectTrigger className="h-8 w-[220px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -72,7 +71,7 @@ export default function AccuracyNavBar({
             disabled={pending}
             onValueChange={(v) => push({ provider: v })}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="h-8 w-[180px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -81,7 +80,7 @@ export default function AccuracyNavBar({
             </SelectContent>
           </Select>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

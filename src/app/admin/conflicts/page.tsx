@@ -17,6 +17,7 @@ import { db } from "@/lib/db";
 import ConflictsClientFilter from "./ConflictsClientFilter";
 
 export const dynamic = "force-dynamic";
+const PAGE_SIZE = 50;
 
 function parseField(raw: string | null): string {
   if (!raw) return "—";
@@ -44,7 +45,7 @@ function relativeTime(d: Date): string {
 export default async function ConflictsQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ clientId?: string }>;
+  searchParams: Promise<{ clientId?: string; page?: string }>;
 }) {
   const sp = await searchParams;
 
@@ -70,12 +71,20 @@ export default async function ConflictsQueuePage({
       ? sp.clientId
       : clients[0]!.id;
   const currentClient = clients.find((c) => c.id === currentClientId)!;
+  const pageNum = Number(sp.page ?? "1");
+  const page = Number.isFinite(pageNum) && pageNum > 0 ? pageNum : 1;
 
-  const rows = await db.enrichmentLog.findMany({
-    where: { clientId: currentClientId, status: "conflict_pending" },
-    orderBy: { createdAt: "desc" },
-    take: 500,
-  });
+  const where = { clientId: currentClientId, status: "conflict_pending" as const };
+  const [rows, total] = await Promise.all([
+    db.enrichmentLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    db.enrichmentLog.count({ where }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const contactIds = Array.from(
     new Set(rows.map((r) => r.contactId).filter((id): id is string => Boolean(id))),
@@ -97,7 +106,6 @@ export default async function ConflictsQueuePage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Enrichment conflicts</h1>
         <p className="text-sm text-slate-600">
           Fields where Cognism and Apollo disagreed within the confidence-delta threshold.
         </p>
@@ -124,7 +132,7 @@ export default async function ConflictsQueuePage({
                 <TableHead>Company</TableHead>
                 <TableHead>Field</TableHead>
                 <TableHead>Detected</TableHead>
-                <TableHead className="w-28"> </TableHead>
+                <TableHead className="w-28 text-right"> </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -181,9 +189,9 @@ export default async function ConflictsQueuePage({
                       <TableCell className="tabular-nums text-muted-foreground">
                         {relativeTime(r.createdAt)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right">
                         {r.contactId ? (
-                          <Button variant="link" className="h-auto px-0" asChild>
+                          <Button variant="link" size="sm" className="h-auto px-0" asChild>
                             <Link href={`/admin/contacts/${r.contactId}#conflicts`}>
                               Resolve →
                             </Link>
@@ -200,6 +208,25 @@ export default async function ConflictsQueuePage({
           </Table>
         </CardContent>
       </Card>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">
+          Page {page} of {totalPages}
+        </span>
+        <div className="flex gap-2">
+          <Link
+            href={`?clientId=${encodeURIComponent(currentClientId)}&page=${Math.max(1, page - 1)}`}
+            className={`rounded border px-3 py-1 ${page <= 1 ? "pointer-events-none opacity-50" : ""}`}
+          >
+            Prev
+          </Link>
+          <Link
+            href={`?clientId=${encodeURIComponent(currentClientId)}&page=${Math.min(totalPages, page + 1)}`}
+            className={`rounded border px-3 py-1 ${page >= totalPages ? "pointer-events-none opacity-50" : ""}`}
+          >
+            Next
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

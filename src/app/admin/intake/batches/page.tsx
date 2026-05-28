@@ -40,7 +40,6 @@ export default async function BatchesListPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Import batches</h1>
           <p className="mt-1 text-sm text-slate-600">
             All CSV imports across all clients, newest first.
           </p>
@@ -76,19 +75,24 @@ export default async function BatchesListPage() {
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Accepted</TableHead>
                   <TableHead className="text-right">Rejected</TableHead>
-                  <TableHead>Status</TableHead>
+                <TableHead className="text-center">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {batches.map((b) => (
                   <TableRow key={b.id}>
                     <TableCell>
+                    <span className="font-medium text-slate-900">
                       <Link
                         href={`/admin/intake/batches/${b.id}`}
-                        className="font-semibold text-primary underline-offset-4 hover:underline"
+                        className="underline-offset-4 hover:underline"
                       >
                         {b.fileName}
                       </Link>
+                    </span>
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      {b.rowsTotal} rows
+                    </span>
                     </TableCell>
                     <TableCell className="text-slate-700">
                       {clientName.get(b.clientId) ?? b.clientId}
@@ -108,7 +112,7 @@ export default async function BatchesListPage() {
                     <TableCell className="text-right tabular-nums text-rose-700">
                       {b.rowsRejected}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       <Badge className={getStatusVariant(b.status)}>{b.status}</Badge>
                     </TableCell>
                   </TableRow>

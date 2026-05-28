@@ -137,12 +137,6 @@ export default async function QuarantineReviewPage({
     : [];
   const userById = new Map(users.map((u) => [u.id, u]));
 
-  function actorLabel(actor: string): string {
-    const u = userById.get(actor);
-    if (u) return u.fullName;
-    return actor;
-  }
-
   const now = Date.now();
   const THIRTY_DAYS_MS = 30 * 86_400_000;
   const escalatedCount = rows.filter(
@@ -194,16 +188,15 @@ export default async function QuarantineReviewPage({
                 <TableHead>Reason</TableHead>
                 <TableHead>Gate flow</TableHead>
                 <TableHead>Detail</TableHead>
-                <TableHead>Owner</TableHead>
                 <TableHead>Added</TableHead>
-                <TableHead>Review state</TableHead>
-                <TableHead className="w-52">Actions</TableHead>
+                <TableHead className="text-center">Review state</TableHead>
+                <TableHead className="w-52 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-16">
+                  <TableCell colSpan={9} className="py-16">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
                       <FilterX className="size-12 text-muted-foreground/80" aria-hidden />
                       <p className="text-sm text-slate-600">
@@ -286,16 +279,15 @@ export default async function QuarantineReviewPage({
                       <TableCell className="max-w-[220px] align-top text-xs text-slate-700">
                         {truncate(r.reasonDetail, 80)}
                       </TableCell>
-                      <TableCell className="align-top text-xs">{actorLabel(r.actor)}</TableCell>
                       <TableCell className="align-top text-xs tabular-nums text-muted-foreground">
                         {relativeTime(r.createdAt)}
                       </TableCell>
-                      <TableCell className="align-top">
+                      <TableCell className="align-top text-center">
                         <Badge className={getQuarantineReviewStateVariant(r.reviewState)}>
                           {r.reviewState}
                         </Badge>
                       </TableCell>
-                      <TableCell className="align-top">
+                      <TableCell className="align-top text-right">
                         {r.reviewState === "released" ? (
                           <div className="text-xs text-muted-foreground">
                             <div>

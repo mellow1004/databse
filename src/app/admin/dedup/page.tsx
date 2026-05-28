@@ -43,7 +43,6 @@ export default async function DedupPage({
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Duplicate review</h1>
           <p className="text-sm text-slate-600">
             No clients in the database. Run{" "}
             <code className="font-mono text-xs">npm run db:seed</code> first.
@@ -70,7 +69,6 @@ export default async function DedupPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Duplicate review</h1>
         <p className="text-sm text-slate-600">
           Identified candidate merges across master data, sorted by confidence.
         </p>

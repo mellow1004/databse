@@ -85,23 +85,20 @@ export default async function AuditLogPage(props: {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Audit log</h1>
         <p className="text-sm text-slate-600">Filter and inspect immutable governance events.</p>
       </div>
 
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="sticky top-0 z-10 -mx-6 mb-4 border-b bg-slate-50 px-6 py-3">
+        <Card className="shadow-none ring-0">
+          <CardContent className="p-0">
           <form method="GET" className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <div className="space-y-1">
               <Label>Actor</Label>
-              <Input name="actor" defaultValue={actor} placeholder="user id" />
+              <Input name="actor" defaultValue={actor} placeholder="user id" className="h-8" />
             </div>
             <div className="space-y-1">
               <Label>Action</Label>
-              <select name="action" defaultValue={action} className="h-9 w-full rounded-md border px-2 text-sm">
+              <select name="action" defaultValue={action} className="h-8 w-full rounded-md border px-2 text-sm">
                 <option value="">All</option>
                 {actionOptions.map((a) => (
                   <option key={a.action} value={a.action}>{a.action}</option>
@@ -110,7 +107,7 @@ export default async function AuditLogPage(props: {
             </div>
             <div className="space-y-1">
               <Label>Resource type</Label>
-              <select name="resourceType" defaultValue={resourceType} className="h-9 w-full rounded-md border px-2 text-sm">
+              <select name="resourceType" defaultValue={resourceType} className="h-8 w-full rounded-md border px-2 text-sm">
                 <option value="">All</option>
                 {resourceTypeOptions.map((r) => (
                   <option key={r.resourceType} value={r.resourceType}>{r.resourceType}</option>
@@ -119,7 +116,7 @@ export default async function AuditLogPage(props: {
             </div>
             <div className="space-y-1">
               <Label>Client</Label>
-              <select name="clientId" defaultValue={clientId} className="h-9 w-full rounded-md border px-2 text-sm">
+              <select name="clientId" defaultValue={clientId} className="h-8 w-full rounded-md border px-2 text-sm">
                 <option value="">All</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -128,17 +125,18 @@ export default async function AuditLogPage(props: {
             </div>
             <div className="space-y-1">
               <Label>From</Label>
-              <Input type="date" name="from" defaultValue={from} />
+              <Input type="date" name="from" defaultValue={from} className="h-8" />
             </div>
             <div className="space-y-1">
               <Label>To</Label>
-              <Input type="date" name="to" defaultValue={to} />
+              <Input type="date" name="to" defaultValue={to} className="h-8" />
             </div>
             <input type="hidden" name="page" value="1" />
             <button type="submit" className="hidden" aria-hidden />
           </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card className="shadow-sm">
         <CardContent className="p-0">

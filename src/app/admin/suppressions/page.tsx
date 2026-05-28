@@ -17,9 +17,9 @@ import {
   getStatusVariant,
   getSuppressionScopeVariant,
 } from "@/lib/badge-helpers";
-import AddSuppressionForm from "./AddSuppressionForm";
 import FilterBar from "./FilterBar";
 import ReleaseButton from "./ReleaseButton";
+import AddSuppressionDialog from "./AddSuppressionDialog";
 
 export const dynamic = "force-dynamic";
 
@@ -126,7 +126,6 @@ export default async function SuppressionsPage({
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Suppressions</h1>
           <p className="text-sm text-slate-600">
             No clients found — run <code className="font-mono text-xs">npm run db:seed</code>{" "}
             first.
@@ -194,8 +193,8 @@ export default async function SuppressionsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Suppressions</h1>
+      <div className="flex items-center justify-end gap-3">
+        <AddSuppressionDialog clients={clients.map((c) => ({ id: c.id, name: c.name }))} />
         <Button variant="outline" size="sm" asChild>
           <Link href="/admin/suppressions/bulk-import">Bulk import</Link>
         </Button>
@@ -227,8 +226,6 @@ export default async function SuppressionsPage({
         <span className="tabular-nums">{pendingApprovals}</span> pending).
       </p>
 
-      <AddSuppressionForm clients={clients.map((c) => ({ id: c.id, name: c.name }))} />
-
       <Card className="shadow-sm">
         <CardContent className="p-0">
           <Table>
@@ -237,23 +234,20 @@ export default async function SuppressionsPage({
                 <TableHead>Scope</TableHead>
                 <TableHead>Target</TableHead>
                 <TableHead>Reason</TableHead>
-                <TableHead>Owner</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Cooling</TableHead>
                 <TableHead>Added</TableHead>
-                <TableHead className="w-40">Actions</TableHead>
+                <TableHead className="w-40 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-sm text-slate-600">
+                  <TableCell colSpan={6} className="py-12 text-center text-sm text-slate-600">
                     No suppressions match these filters.
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((r) => {
-                  const ownerInfo = ownerById.get(r.owner);
                   const clientName = r.clientId ? clientById.get(r.clientId) : null;
                   return (
                     <TableRow key={r.id}>
@@ -270,29 +264,18 @@ export default async function SuppressionsPage({
                       <TableCell className="align-top">{targetCell(r)}</TableCell>
                       <TableCell className="align-top">
                         <div className="space-y-1">
-                          <div className="text-xs font-medium">{r.reasonCode}</div>
+                          <div className="font-medium text-slate-900">{r.reasonCode}</div>
                           {r.reasonDetail ? (
-                            <div className="text-xs text-muted-foreground">{r.reasonDetail}</div>
+                            <div className="text-xs text-slate-500">{r.reasonDetail}</div>
                           ) : null}
+                          <div>{coolingCell(r)}</div>
                           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
                             {r.source}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="align-top">
-                        <div className="text-xs">
-                          {ownerInfo?.fullName ?? (
-                            <span className="font-mono">{r.owner.slice(0, 8)}…</span>
-                          )}
-                        </div>
-                        {ownerInfo?.email ? (
-                          <div className="text-[10px] text-muted-foreground">
-                            {ownerInfo.email}
-                          </div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
                           <Badge className={getStatusVariant(r.releaseStatus)}>
                             {r.releaseStatus}
                           </Badge>
@@ -309,11 +292,10 @@ export default async function SuppressionsPage({
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className="align-top">{coolingCell(r)}</TableCell>
                       <TableCell className="align-top text-xs tabular-nums text-muted-foreground">
                         {relativeTime(r.createdAt)}
                       </TableCell>
-                      <TableCell className="align-top">
+                      <TableCell className="align-top text-right">
                         {r.releaseStatus === "active" || r.releaseStatus === "request_pending" ? (
                           <ReleaseButton
                             suppressionId={r.id}

@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  ChevronDown,
   FileSearch,
   Gavel,
   History,
@@ -24,6 +25,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 function navLinkClass(active: boolean) {
   return active
@@ -56,6 +63,126 @@ export function AppSidebar() {
   const isEnrichmentWaterfall = pathname.startsWith("/admin/enrichment-waterfall");
   const isProviderGovernance = pathname.startsWith("/admin/provider-governance");
 
+  const sections = useMemo(
+    () => [
+      {
+        label: "Overview",
+        collapsible: false,
+        links: [
+          { href: "/admin", label: "Dashboard", icon: LayoutDashboard, active: isDashboard },
+          { href: "/admin/health", label: "Database health", icon: Activity, active: isHealth },
+        ],
+      },
+      {
+        label: "Data pipeline",
+        collapsible: true,
+        links: [
+          { href: "/admin/intake/upload", label: "Upload CSV", icon: Upload, active: isUpload },
+          { href: "/admin/intake/batches", label: "Import batches", icon: Layers, active: isBatches },
+          { href: "/admin/dedup", label: "Duplicate review", icon: GitMerge, active: isDedup },
+        ],
+      },
+      {
+        label: "Module 3 — Verify & Enrich",
+        collapsible: true,
+        links: [
+          { href: "/admin/conflicts", label: "Resolve conflicts", icon: AlertTriangle, active: isConflicts },
+          {
+            href: "/admin/enrichment-waterfall",
+            label: "Enrichment waterfall",
+            icon: Workflow,
+            active: isEnrichmentWaterfall,
+          },
+        ],
+      },
+      {
+        label: "Module 5 — AI SDR Integration",
+        collapsible: true,
+        links: [
+          { href: "/admin/platform-sim", label: "Platform simulator", icon: Radio, active: isPlatformSim },
+        ],
+      },
+      {
+        label: "Module 6 — Reporting",
+        collapsible: true,
+        links: [
+          { href: "/admin/analytics", label: "Analytics", icon: BarChart3, active: isAnalytics },
+          { href: "/admin/bias-monitoring", label: "Bias monitoring", icon: Scale, active: isBiasMonitoring },
+          {
+            href: "/admin/provider-governance",
+            label: "Provider governance",
+            icon: Network,
+            active: isProviderGovernance,
+          },
+        ],
+      },
+      {
+        label: "Module 4 — Governance",
+        collapsible: true,
+        links: [
+          { href: "/admin/suppressions", label: "Suppressions", icon: Shield, active: isSuppressions },
+          { href: "/admin/quarantine", label: "Quarantine", icon: Lock, active: isQuarantine },
+          { href: "/admin/accuracy", label: "Accuracy QA", icon: BarChart3, active: isAccuracy },
+          { href: "/admin/refresh-cycle", label: "Refresh cycle", icon: RotateCw, active: isRefreshCycle },
+          { href: "/admin/dsar", label: "DSAR cases", icon: FileSearch, active: isDsar },
+          { href: "/admin/bulk-approvals", label: "Bulk approvals", icon: Gavel, active: isBulkApprovals },
+          { href: "/admin/rollback", label: "Rollback", icon: RotateCw, active: isRollback },
+          { href: "/admin/audit-log", label: "Audit log", icon: History, active: isAuditLog },
+        ],
+      },
+      {
+        label: "Reference",
+        collapsible: true,
+        links: [
+          { href: "/admin/data-dictionary", label: "Data dictionary", icon: BookOpen, active: isDataDictionary },
+        ],
+      },
+    ],
+    [
+      isAccuracy,
+      isAnalytics,
+      isAuditLog,
+      isBatches,
+      isBiasMonitoring,
+      isBulkApprovals,
+      isConflicts,
+      isDashboard,
+      isDataDictionary,
+      isDsar,
+      isEnrichmentWaterfall,
+      isHealth,
+      isPlatformSim,
+      isProviderGovernance,
+      isQuarantine,
+      isRefreshCycle,
+      isRollback,
+      isSuppressions,
+      isUpload,
+    ],
+  );
+
+  const [openBySection, setOpenBySection] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const initial: Record<string, boolean> = {};
+    for (const section of sections) {
+      if (!section.collapsible) continue;
+      const key = `sidebar-section:${section.label}`;
+      const stored = window.localStorage.getItem(key);
+      if (stored === "true" || stored === "false") {
+        initial[section.label] = stored === "true";
+      } else {
+        initial[section.label] = section.links.some((link) => link.active);
+      }
+    }
+    setOpenBySection(initial);
+  }, [sections]);
+
+  function setSectionOpen(label: string, next: boolean) {
+    setOpenBySection((prev) => ({ ...prev, [label]: next }));
+    window.localStorage.setItem(`sidebar-section:${label}`, String(next));
+  }
+
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
       <div className="flex h-16 flex-col justify-center border-b border-slate-200 px-4">
@@ -63,185 +190,47 @@ export function AppSidebar() {
         <span className="text-xs text-slate-500">Master Database</span>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
-        <div className="flex flex-col gap-1">
-          <Link
-            href="/admin"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isDashboard)}`}
-          >
-            <LayoutDashboard size={16} aria-hidden />
-            Dashboard
-          </Link>
-          <Link
-            href="/admin/health"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isHealth)}`}
-          >
-            <Activity size={16} aria-hidden />
-            Database health
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Data pipeline
-          </p>
-          <Link
-            href="/admin/intake/upload"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isUpload)}`}
-          >
-            <Upload size={16} aria-hidden />
-            Upload CSV
-          </Link>
-          <Link
-            href="/admin/intake/batches"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isBatches)}`}
-          >
-            <Layers size={16} aria-hidden />
-            Import batches
-          </Link>
-          <Link
-            href="/admin/dedup"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isDedup)}`}
-          >
-            <GitMerge size={16} aria-hidden />
-            Duplicate review
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Module 3 — Verify & Enrich
-          </p>
-          <Link
-            href="/admin/conflicts"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isConflicts)}`}
-          >
-            <AlertTriangle size={16} aria-hidden />
-            Resolve conflicts
-          </Link>
-          <Link
-            href="/admin/enrichment-waterfall"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isEnrichmentWaterfall)}`}
-          >
-            <Workflow size={16} aria-hidden />
-            Enrichment waterfall
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Module 5 — AI SDR Integration
-          </p>
-          <Link
-            href="/admin/platform-sim"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isPlatformSim)}`}
-          >
-            <Radio size={16} aria-hidden />
-            Platform simulator
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Module 6 — Reporting
-          </p>
-          <Link
-            href="/admin/analytics"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isAnalytics)}`}
-          >
-            <BarChart3 size={16} aria-hidden />
-            Analytics
-          </Link>
-          <Link
-            href="/admin/bias-monitoring"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isBiasMonitoring)}`}
-          >
-            <Scale size={16} aria-hidden />
-            Bias monitoring
-          </Link>
-          <Link
-            href="/admin/provider-governance"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isProviderGovernance)}`}
-          >
-            <Network size={16} aria-hidden />
-            Provider governance
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Module 4 — Governance
-          </p>
-          <Link
-            href="/admin/suppressions"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isSuppressions)}`}
-          >
-            <Shield size={16} aria-hidden />
-            Suppressions
-          </Link>
-          <Link
-            href="/admin/quarantine"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isQuarantine)}`}
-          >
-            <Lock size={16} aria-hidden />
-            Quarantine
-          </Link>
-          <Link
-            href="/admin/accuracy"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isAccuracy)}`}
-          >
-            <BarChart3 size={16} aria-hidden />
-            Accuracy QA
-          </Link>
-          <Link
-            href="/admin/refresh-cycle"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isRefreshCycle)}`}
-          >
-            <RotateCw size={16} aria-hidden />
-            Refresh cycle
-          </Link>
-          <Link
-            href="/admin/dsar"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isDsar)}`}
-          >
-            <FileSearch size={16} aria-hidden />
-            DSAR cases
-          </Link>
-          <Link
-            href="/admin/bulk-approvals"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isBulkApprovals)}`}
-          >
-            <Gavel size={16} aria-hidden />
-            Bulk approvals
-          </Link>
-          <Link
-            href="/admin/rollback"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isRollback)}`}
-          >
-            <RotateCw size={16} aria-hidden />
-            Rollback
-          </Link>
-          <Link
-            href="/admin/audit-log"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isAuditLog)}`}
-          >
-            <History size={16} aria-hidden />
-            Audit log
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Reference
-          </p>
-          <Link
-            href="/admin/data-dictionary"
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isDataDictionary)}`}
-          >
-            <BookOpen size={16} aria-hidden />
-            Data dictionary
-          </Link>
-        </div>
+      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
+        {sections.map((section) =>
+          section.collapsible ? (
+            <Collapsible
+              key={section.label}
+              open={openBySection[section.label] ?? false}
+              onOpenChange={(next) => setSectionOpen(section.label, next)}
+              className="flex flex-col gap-1"
+            >
+              <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                {section.label}
+                <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="flex flex-col gap-1">
+                {section.links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(link.active)}`}
+                  >
+                    <link.icon size={16} aria-hidden />
+                    {link.label}
+                  </Link>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          ) : (
+            <div key={section.label} className="flex flex-col gap-1">
+              {section.links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(link.active)}`}
+                >
+                  <link.icon size={16} aria-hidden />
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          ),
+        )}
       </nav>
 
       <div className="mt-auto border-t border-slate-200 px-3 py-4">

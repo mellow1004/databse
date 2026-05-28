@@ -20,6 +20,7 @@ export type ClientOption = { id: string; name: string };
 
 type Props = {
   clients: ClientOption[];
+  onSuccess?: () => void;
 };
 
 type Scope = "global" | "client_level" | "domain_level";
@@ -34,7 +35,7 @@ const REASON_CODES = [
   "bounce_repeated",
 ] as const;
 
-export default function AddSuppressionForm({ clients }: Props) {
+export default function AddSuppressionForm({ clients, onSuccess }: Props) {
   const router = useRouter();
   const [scope, setScope] = useState<Scope>("global");
   const [clientId, setClientId] = useState<string>(clients[0]?.id ?? "");
@@ -107,6 +108,7 @@ export default function AddSuppressionForm({ clients }: Props) {
       }
       resetAfterSuccess();
       router.refresh();
+      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
