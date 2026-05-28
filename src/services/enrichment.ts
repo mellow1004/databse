@@ -24,6 +24,7 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { apollo, cognism } from "@/providers";
+import { captureSnapshot } from "@/services/snapshots";
 import type {
   Enricher,
   EnrichmentInput,
@@ -232,6 +233,42 @@ export async function enrichContact(
 
   const anyMatched = primaryResult.matched || secondaryResult.matched;
   const outcomeStatus: EnrichmentOutcome["status"] = anyMatched ? "enriched" : "no_match";
+
+  const contactPreWrite: Record<string, string | Date | null> = {
+    lastEnrichedAt: contact.lastEnrichedAt,
+    writeSource: contact.writeSource,
+  };
+  const contactRecord = contact as unknown as Record<string, unknown>;
+  for (const key of Object.keys(contactUpdates)) {
+    const value = contactRecord[key];
+    contactPreWrite[key] =
+      typeof value === "string" || value instanceof Date || value === null
+        ? value
+        : null;
+  }
+  const snapshotRecords: Array<{
+    recordType: "contact" | "company";
+    recordId: string;
+    data: object;
+  }> = [{ recordType: "contact", recordId: contact.id, data: contactPreWrite }];
+  if (Object.keys(companyUpdates).length > 0) {
+    const companyPreWrite: Record<string, string | null> = {};
+    const companyRecord = contact.company as unknown as Record<string, unknown>;
+    for (const key of Object.keys(companyUpdates)) {
+      const value = companyRecord[key];
+      companyPreWrite[key] = typeof value === "string" || value === null ? value : null;
+    }
+    snapshotRecords.push({
+      recordType: "company",
+      recordId: contact.companyId,
+      data: companyPreWrite,
+    });
+  }
+  await captureSnapshot({
+    batchId,
+    batchType: "enrichment",
+    records: snapshotRecords,
+  });
 
   // ---- Single transaction: log rows + field updates ----
   await db.$transaction(async (tx) => {

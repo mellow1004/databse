@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { captureSnapshot } from "@/services/snapshots";
 import {
   resolveCompany,
   resolvePerson,
@@ -155,6 +156,26 @@ export async function promoteBatch(input: PromotionInput): Promise<PromotionOutp
       }
 
       if (shouldTransition) {
+        const pre = await db.contact.findUnique({
+          where: { id: contactId },
+          select: { gateStatus: true, derivedFieldVersion: true },
+        });
+        if (pre) {
+          await captureSnapshot({
+            batchId: batch.id,
+            batchType: "import_promotion",
+            records: [
+              {
+                recordType: "contact",
+                recordId: contactId,
+                data: {
+                  gateStatus: pre.gateStatus,
+                  derivedFieldVersion: pre.derivedFieldVersion,
+                },
+              },
+            ],
+          });
+        }
         await db.contact.update({
           where: { id: contactId },
           data: {

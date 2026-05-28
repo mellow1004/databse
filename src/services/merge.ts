@@ -26,6 +26,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { captureSnapshot } from "@/services/snapshots";
 
 // ============================================================
 // Public types
@@ -164,6 +165,22 @@ async function executeContactMerge(input: MergeInput): Promise<MergeOutput> {
       fieldOverrides,
     );
 
+    const survivorSnapshot: Record<string, unknown> = {};
+    for (const key of Object.keys(updateData)) {
+      survivorSnapshot[key] = (survivor as unknown as Record<string, unknown>)[key] ?? null;
+    }
+    const mergedFromSnapshot: Record<string, unknown> = {
+      mergedIntoId: mergedFrom.mergedIntoId,
+    };
+    await captureSnapshot({
+      batchId: `merge:${survivorId}:${mergedFromId}`,
+      batchType: "merge",
+      records: [
+        { recordType: "contact", recordId: survivorId, data: survivorSnapshot },
+        { recordType: "contact", recordId: mergedFromId, data: mergedFromSnapshot },
+      ],
+    });
+
     if (Object.keys(updateData).length > 0) {
       await tx.contact.update({ where: { id: survivorId }, data: updateData });
     }
@@ -244,6 +261,22 @@ async function executeCompanyMerge(input: MergeInput): Promise<MergeOutput> {
       COMPANY_OVERRIDEABLE_FIELDS,
       fieldOverrides,
     );
+
+    const survivorSnapshot: Record<string, unknown> = {};
+    for (const key of Object.keys(updateData)) {
+      survivorSnapshot[key] = (survivor as unknown as Record<string, unknown>)[key] ?? null;
+    }
+    const mergedFromSnapshot: Record<string, unknown> = {
+      mergedIntoId: mergedFrom.mergedIntoId,
+    };
+    await captureSnapshot({
+      batchId: `merge:${survivorId}:${mergedFromId}`,
+      batchType: "merge",
+      records: [
+        { recordType: "company", recordId: survivorId, data: survivorSnapshot },
+        { recordType: "company", recordId: mergedFromId, data: mergedFromSnapshot },
+      ],
+    });
 
     if (Object.keys(updateData).length > 0) {
       await tx.company.update({ where: { id: survivorId }, data: updateData });

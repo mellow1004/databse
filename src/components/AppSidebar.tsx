@@ -6,6 +6,7 @@ import {
   BarChart3,
   FileSearch,
   Gavel,
+  History,
   GitMerge,
   LayoutDashboard,
   Layers,
@@ -14,6 +15,7 @@ import {
   RotateCw,
   Scale,
   Shield,
+  BookOpen,
   Upload,
   User,
   Wand2,
@@ -46,6 +48,9 @@ export function AppSidebar() {
   const isDemoControls = pathname.startsWith("/admin/demo-controls");
   const isDsar = pathname.startsWith("/admin/dsar");
   const isBulkApprovals = pathname.startsWith("/admin/bulk-approvals");
+  const isAuditLog = pathname.startsWith("/admin/audit-log");
+  const isRollback = pathname.startsWith("/admin/rollback");
+  const isDataDictionary = pathname.startsWith("/admin/data-dictionary");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -190,6 +195,33 @@ export function AppSidebar() {
           >
             <Gavel size={16} aria-hidden />
             Bulk approvals
+          </Link>
+          <Link
+            href="/admin/rollback"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isRollback)}`}
+          >
+            <RotateCw size={16} aria-hidden />
+            Rollback
+          </Link>
+          <Link
+            href="/admin/audit-log"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isAuditLog)}`}
+          >
+            <History size={16} aria-hidden />
+            Audit log
+          </Link>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Reference
+          </p>
+          <Link
+            href="/admin/data-dictionary"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isDataDictionary)}`}
+          >
+            <BookOpen size={16} aria-hidden />
+            Data dictionary
           </Link>
         </div>
       </nav>

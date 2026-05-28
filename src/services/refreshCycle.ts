@@ -3,6 +3,7 @@ import { verifyContact } from "@/services/verification";
 import { enrichContact } from "@/services/enrichment";
 import { applyGateDecision, evaluateContact } from "@/services/gates";
 import { checkBulkApproval } from "@/services/bulkApproval";
+import { captureSnapshot } from "@/services/snapshots";
 
 export type RefreshCycleInput = {
   /** null/undefined = all clients (cross-client refresh). */
@@ -530,6 +531,27 @@ export async function runRefreshCycle(
         if (evaluation.decision === "no_change") {
           gates.unchanged += 1;
         } else {
+          const preGate = await db.contact.findUnique({
+            where: { id: row.id },
+            select: {
+              gateStatus: true,
+              quarantineReason: true,
+              derivedFieldVersion: true,
+            },
+          });
+          if (preGate) {
+            await captureSnapshot({
+              batchId: refreshLogId,
+              batchType: "refresh_cycle",
+              records: [
+                {
+                  recordType: "contact",
+                  recordId: row.id,
+                  data: preGate,
+                },
+              ],
+            });
+          }
           const gateResult = await applyGateDecision(evaluation, input.actorUserId);
           if (!gateResult.applied) {
             gates.unchanged += 1;
@@ -702,6 +724,23 @@ export async function runRefreshCycle(
       anonymisation.anonymised = toAnonymise.length;
 
       if (toAnonymise.length > 0) {
+        const preAnonRows = await db.contact.findMany({
+          where: { id: { in: toAnonymise.map((c) => c.id) } },
+          select: { id: true, email: true, phone: true, lifecycleStage: true },
+        });
+        await captureSnapshot({
+          batchId: refreshLogId,
+          batchType: "refresh_cycle",
+          records: preAnonRows.map((r) => ({
+            recordType: "contact" as const,
+            recordId: r.id,
+            data: {
+              email: r.email,
+              phone: r.phone,
+              lifecycleStage: r.lifecycleStage,
+            },
+          })),
+        });
         await db.$transaction(async (tx) => {
           for (const c of toAnonymise) {
             await tx.contact.update({
