@@ -36,24 +36,47 @@ export type AccuracyStats = {
   alertLevel: "ok" | "investigation" | "demotion" | "insufficient_data";
 };
 
-/** Parse enrichment_log.rawResponse for a non-empty title claim (fields.title or legacy title). */
-export function extractClaimedTitle(rawResponse: string | null): string | null {
-  if (!rawResponse) return null;
+const BASE_FIELDS = ["title", "company", "seniority"] as const;
+type SampleField = (typeof BASE_FIELDS)[number] | "email" | "phone";
+
+/** Parse enrichment_log.rawResponse for fields used in QA sampling. */
+export function extractClaimedFields(rawResponse: string | null): Record<SampleField, string | null> {
+  const empty: Record<SampleField, string | null> = {
+    title: null,
+    company: null,
+    seniority: null,
+    email: null,
+    phone: null,
+  };
+  if (!rawResponse) return empty;
   try {
     const p = JSON.parse(rawResponse) as Record<string, unknown>;
     const fields = p.fields as Record<string, unknown> | undefined;
-    if (fields && typeof fields.title === "string") {
-      const t = fields.title.trim();
-      if (t) return t;
+    if (fields) {
+      const title = typeof fields.title === "string" ? fields.title.trim() : "";
+      const company =
+        typeof fields.company === "string"
+          ? fields.company.trim()
+          : typeof fields.companyName === "string"
+            ? String(fields.companyName).trim()
+            : "";
+      const seniority = typeof fields.seniority === "string" ? fields.seniority.trim() : "";
+      const email = typeof fields.email === "string" ? fields.email.trim() : "";
+      const phone = typeof fields.phone === "string" ? fields.phone.trim() : "";
+      if (title) empty.title = title;
+      if (company) empty.company = company;
+      if (seniority) empty.seniority = seniority;
+      if (email) empty.email = email;
+      if (phone) empty.phone = phone;
     }
-    if (typeof p.title === "string") {
-      const t = p.title.trim();
-      if (t) return t;
+    if (!empty.title && typeof p.title === "string") empty.title = p.title.trim() || null;
+    if (!empty.seniority && typeof p.seniority === "string") {
+      empty.seniority = p.seniority.trim() || null;
     }
   } catch {
-    return null;
+    return empty;
   }
-  return null;
+  return empty;
 }
 
 function shuffleInPlace<T>(arr: T[]): void {
@@ -80,7 +103,7 @@ function alertFromStats(
 
 /**
  * Draws a stratified random sample of gate_2 contacts that have a successful
- * enrichment row from `provider` carrying a non-empty title in rawResponse.
+ * enrichment row from `provider`, then creates one QA row per sampled field.
  */
 export async function drawAccuracySample(input: SampleDrawInput): Promise<SampleDrawOutput> {
   const { clientId, provider, cycleNumber, actorUserId } = input;
@@ -96,13 +119,15 @@ export async function drawAccuracySample(input: SampleDrawInput): Promise<Sample
     select: { id: true, contactId: true, rawResponse: true },
   });
 
-  const bestByContact = new Map<string, { enrichmentLogId: string; title: string }>();
+  const bestByContact = new Map<
+    string,
+    { enrichmentLogId: string; fields: Record<SampleField, string | null> }
+  >();
   for (const row of logs) {
     if (!row.contactId) continue;
     if (bestByContact.has(row.contactId)) continue;
-    const title = extractClaimedTitle(row.rawResponse);
-    if (!title) continue;
-    bestByContact.set(row.contactId, { enrichmentLogId: row.id, title });
+    const fields = extractClaimedFields(row.rawResponse);
+    bestByContact.set(row.contactId, { enrichmentLogId: row.id, fields });
   }
 
   const contactIds = Array.from(bestByContact.keys());
@@ -124,17 +149,26 @@ export async function drawAccuracySample(input: SampleDrawInput): Promise<Sample
       gateStatus: "gate_2",
       mergedIntoId: null,
     },
-    select: { id: true },
+    select: { id: true, email: true, phone: true },
   });
-  const eligibleSet = new Set(eligibleContacts.map((c) => c.id));
+  const eligibleById = new Map(eligibleContacts.map((c) => [c.id, c]));
 
-  const population: { contactId: string; enrichmentLogId: string; title: string }[] = [];
+  const population: Array<{
+    contactId: string;
+    enrichmentLogId: string;
+    fields: Record<SampleField, string | null>;
+    email: string | null;
+    phone: string | null;
+  }> = [];
   for (const [contactId, meta] of bestByContact) {
-    if (!eligibleSet.has(contactId)) continue;
+    const contact = eligibleById.get(contactId);
+    if (!contact) continue;
     population.push({
       contactId,
       enrichmentLogId: meta.enrichmentLogId,
-      title: meta.title,
+      fields: meta.fields,
+      email: contact.email,
+      phone: contact.phone,
     });
   }
 
@@ -153,16 +187,22 @@ export async function drawAccuracySample(input: SampleDrawInput): Promise<Sample
 
   await db.$transaction(async (tx) => {
     if (picked.length > 0) {
-      await tx.accuracySample.createMany({
-        data: picked.map((p) => ({
+      const sampleRows = picked.flatMap((p) => {
+        const fields: SampleField[] = [...BASE_FIELDS];
+        if (p.email) fields.push("email");
+        if (p.phone) fields.push("phone");
+        return fields.map((fieldChecked) => ({
           clientId,
           provider,
           cycleNumber,
           contactId: p.contactId,
           enrichmentLogId: p.enrichmentLogId,
-          fieldChecked: "title",
-          expectedValue: p.title,
-        })),
+          fieldChecked,
+          expectedValue: p.fields[fieldChecked] ?? "",
+        }));
+      });
+      await tx.accuracySample.createMany({
+        data: sampleRows,
       });
     }
 
@@ -245,11 +285,13 @@ export async function computeAccuracyStats(
   provider: string,
   cycleNumber: number,
   clientId?: string,
+  fieldChecked?: string,
 ): Promise<AccuracyStats> {
   const where = {
     provider,
     cycleNumber,
     ...(clientId ? { clientId } : {}),
+    ...(fieldChecked ? { fieldChecked } : {}),
   };
 
   const rows = await db.accuracySample.findMany({
@@ -287,9 +329,10 @@ export async function computeAccuracyTrend(
   provider: string,
   clientId: string,
   limit = 10,
+  fieldChecked?: string,
 ): Promise<AccuracyStats[]> {
   const rows = await db.accuracySample.findMany({
-    where: { provider, clientId },
+    where: { provider, clientId, ...(fieldChecked ? { fieldChecked } : {}) },
     select: { cycleNumber: true },
   });
   const cycles = [...new Set(rows.map((r) => r.cycleNumber))]
@@ -298,7 +341,7 @@ export async function computeAccuracyTrend(
 
   const out: AccuracyStats[] = [];
   for (const cycleNumber of cycles) {
-    out.push(await computeAccuracyStats(provider, cycleNumber, clientId));
+    out.push(await computeAccuracyStats(provider, cycleNumber, clientId, fieldChecked));
   }
   return out;
 }

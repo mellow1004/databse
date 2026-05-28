@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 
 type Props = {
   sampleId: string;
+  fieldLabel: string;
 };
 
-export default function SampleReviewButtons({ sampleId }: Props) {
+export default function SampleReviewButtons({ sampleId, fieldLabel }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,11 +42,11 @@ export default function SampleReviewButtons({ sampleId }: Props) {
   }
 
   async function onIncorrect() {
-    const actual = window.prompt("What's the actual title?");
+    const actual = window.prompt(`What's the actual ${fieldLabel}?`);
     if (actual === null) return;
     const trimmed = actual.trim();
     if (!trimmed) {
-      setError("Actual title is required for an incorrect mark.");
+      setError(`Actual ${fieldLabel} is required for an incorrect mark.`);
       return;
     }
     await postReview(false, trimmed);

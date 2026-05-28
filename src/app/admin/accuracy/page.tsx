@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -34,6 +35,7 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 50;
 
 const PROVIDERS = ["cognism", "apollo"] as const;
+const QA_FIELDS = ["title", "company", "seniority", "email", "phone"] as const;
 
 function relativeTime(d: Date): string {
   const diffMs = Date.now() - d.getTime();
@@ -105,11 +107,33 @@ export default async function AccuracyQAPage({
         return {
           provider: prov,
           stats: null as Awaited<ReturnType<typeof computeAccuracyStats>> | null,
+          fieldStats: [] as Array<{
+            field: string;
+            reviewed: number;
+            correct: number;
+            rate: number | null;
+          }>,
           nextCycle: 1,
         };
       }
       const stats = await computeAccuracyStats(prov, max, selectedClientId);
-      return { provider: prov, stats, nextCycle: max + 1 };
+      const fieldStatsRaw = await Promise.all(
+        QA_FIELDS.map(async (field) => ({
+          field,
+          stats: await computeAccuracyStats(prov, max, selectedClientId, field),
+        })),
+      );
+      return {
+        provider: prov,
+        stats,
+        fieldStats: fieldStatsRaw.map(({ field, stats }) => ({
+          field,
+          reviewed: stats.reviewed,
+          correct: stats.correct,
+          rate: stats.accuracyRate,
+        })),
+        nextCycle: max + 1,
+      };
     }),
   );
 
@@ -118,16 +142,30 @@ export default async function AccuracyQAPage({
     provider: selectedProvider,
     reviewedAt: null as null,
   };
-  const [pendingSamples, pendingTotal] = await Promise.all([
-    db.accuracySample.findMany({
-      where: pendingWhere,
-      orderBy: { sampledAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-    db.accuracySample.count({ where: pendingWhere }),
-  ]);
+  const pendingContactRows = await db.accuracySample.findMany({
+    where: pendingWhere,
+    orderBy: { sampledAt: "desc" },
+    select: { contactId: true },
+  });
+  const uniquePendingContactIds: string[] = [];
+  const seenPending = new Set<string>();
+  for (const row of pendingContactRows) {
+    if (seenPending.has(row.contactId)) continue;
+    seenPending.add(row.contactId);
+    uniquePendingContactIds.push(row.contactId);
+  }
+  const pendingTotal = uniquePendingContactIds.length;
   const totalPages = Math.max(1, Math.ceil(pendingTotal / PAGE_SIZE));
+  const pageContactIds = uniquePendingContactIds.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE,
+  );
+  const pendingSamples = pageContactIds.length
+    ? await db.accuracySample.findMany({
+        where: { ...pendingWhere, contactId: { in: pageContactIds } },
+        orderBy: [{ contactId: "asc" }, { sampledAt: "desc" }],
+      })
+    : [];
 
   const pendContactIds = Array.from(
     new Set(pendingSamples.map((s) => s.contactId)),
@@ -142,6 +180,15 @@ export default async function AccuracyQAPage({
       })
     : [];
   const pendById = new Map(pendContacts.map((c) => [c.id, c]));
+  const samplesByContact = new Map<
+    string,
+    Array<(typeof pendingSamples)[number]>
+  >();
+  for (const row of pendingSamples) {
+    const list = samplesByContact.get(row.contactId) ?? [];
+    list.push(row);
+    samplesByContact.set(row.contactId, list);
+  }
 
   const trend = await computeAccuracyTrend(selectedProvider, selectedClientId, 10);
 
@@ -161,7 +208,7 @@ export default async function AccuracyQAPage({
       />
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {latestStatsByProvider.map(({ provider, stats, nextCycle }) => {
+        {latestStatsByProvider.map(({ provider, stats, fieldStats, nextCycle }) => {
           const rate = stats?.accuracyRate ?? null;
           const level = stats?.alertLevel ?? "insufficient_data";
           return (
@@ -195,6 +242,34 @@ export default async function AccuracyQAPage({
                   )}
                 </p>
                 <Separator />
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Accuracy by field
+                  </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Field</TableHead>
+                        <TableHead className="text-right">Reviewed</TableHead>
+                        <TableHead className="text-right">Correct</TableHead>
+                        <TableHead className="text-right">Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {fieldStats.map((row) => (
+                        <TableRow key={`${provider}-${row.field}`}>
+                          <TableCell className="capitalize">{row.field}</TableCell>
+                          <TableCell className="text-right tabular-nums">{row.reviewed}</TableCell>
+                          <TableCell className="text-right tabular-nums">{row.correct}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.rate == null ? "—" : `${row.rate.toFixed(1)}%`}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <Separator />
                 <DrawSampleButton
                   clientId={selectedClientId}
                   provider={provider}
@@ -217,25 +292,28 @@ export default async function AccuracyQAPage({
                 <TableRow>
                   <TableHead>Contact</TableHead>
                   <TableHead>Company</TableHead>
-                  <TableHead>Expected title</TableHead>
-                  <TableHead>Sampled at</TableHead>
-                  <TableHead className="w-56">Actions</TableHead>
+                  <TableHead>Field checks</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingSamples.length === 0 ? (
+                {pageContactIds.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-slate-600">
+                    <TableCell colSpan={3} className="py-10 text-center text-sm text-slate-600">
                       No samples pending review for {selectedProvider}. Draw a new sample to
                       start a QA cycle.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  pendingSamples.map((s) => {
-                    const c = pendById.get(s.contactId);
+                  pageContactIds.map((contactId) => {
+                    const c = pendById.get(contactId);
                     const email = c?.person.primaryEmail ?? c?.email ?? null;
+                    const companyName = c?.company?.legalName ?? "";
+                    const linkedinKeywords = encodeURIComponent(
+                      `${c?.person.fullName ?? ""} ${companyName}`.trim(),
+                    );
+                    const rows = samplesByContact.get(contactId) ?? [];
                     return (
-                      <TableRow key={s.id}>
+                      <TableRow key={contactId}>
                         <TableCell>
                           {c ? (
                             <>
@@ -252,22 +330,48 @@ export default async function AccuracyQAPage({
                                   </span>
                                 )}
                               </div>
+                              <Button variant="link" size="sm" className="h-auto px-0 text-xs" asChild>
+                                <a
+                                  href={`https://www.linkedin.com/search/results/people/?keywords=${linkedinKeywords}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Open LinkedIn search
+                                </a>
+                              </Button>
                             </>
                           ) : (
                             <span className="font-mono text-xs">
-                              {s.contactId.slice(0, 10)}…
+                              {contactId.slice(0, 10)}…
                             </span>
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-slate-700">
-                          {c?.company?.legalName ?? "—"}
+                          {companyName || "—"}
                         </TableCell>
-                        <TableCell className="text-xs">{s.expectedValue}</TableCell>
-                        <TableCell className="tabular-nums text-xs text-muted-foreground">
-                          {relativeTime(s.sampledAt)}
-                        </TableCell>
-                      <TableCell className="text-right">
-                          <SampleReviewButtons sampleId={s.id} />
+                        <TableCell>
+                          <div className="space-y-2">
+                            {rows.map((row) => (
+                              <div
+                                key={row.id}
+                                className="grid gap-2 rounded border p-2 md:grid-cols-[100px_1fr_170px_220px]"
+                              >
+                                <div className="text-xs font-medium uppercase tracking-wide text-slate-600">
+                                  {row.fieldChecked}
+                                </div>
+                                <div className="text-xs">{row.expectedValue || "—"}</div>
+                                <div className="text-xs tabular-nums text-muted-foreground">
+                                  {relativeTime(row.sampledAt)}
+                                </div>
+                                <div className="text-right">
+                                  <SampleReviewButtons
+                                    sampleId={row.id}
+                                    fieldLabel={row.fieldChecked}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
