@@ -314,3 +314,59 @@ export async function maxAccuracyCycle(
   });
   return agg._max.cycleNumber;
 }
+
+export async function checkProviderQualityAlerts(): Promise<
+  Array<{
+    provider: string;
+    cycleNumber: number;
+    accuracyRate: number;
+    alertLevel: "investigation" | "demotion";
+  }>
+> {
+  const rows = await db.accuracySample.findMany({
+    distinct: ["provider"],
+    select: { provider: true },
+    orderBy: { provider: "asc" },
+  });
+
+  const alerts: Array<{
+    provider: string;
+    cycleNumber: number;
+    accuracyRate: number;
+    alertLevel: "investigation" | "demotion";
+  }> = [];
+
+  for (const row of rows) {
+    const agg = await db.accuracySample.aggregate({
+      where: { provider: row.provider },
+      _max: { cycleNumber: true },
+    });
+    const cycleNumber = agg._max.cycleNumber;
+    if (cycleNumber == null) continue;
+
+    const stats = await computeAccuracyStats(row.provider, cycleNumber);
+    if (stats.accuracyRate == null) continue;
+    if (stats.accuracyRate < 75) {
+      alerts.push({
+        provider: row.provider,
+        cycleNumber,
+        accuracyRate: stats.accuracyRate,
+        alertLevel: "demotion",
+      });
+    } else if (stats.accuracyRate < 85) {
+      alerts.push({
+        provider: row.provider,
+        cycleNumber,
+        accuracyRate: stats.accuracyRate,
+        alertLevel: "investigation",
+      });
+    }
+  }
+
+  return alerts.sort(
+    (a, b) =>
+      (a.alertLevel === "demotion" ? -1 : 1) -
+      (b.alertLevel === "demotion" ? -1 : 1) ||
+      a.provider.localeCompare(b.provider),
+  );
+}

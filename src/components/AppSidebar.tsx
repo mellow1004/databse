@@ -17,6 +17,7 @@ import {
   Shield,
   BookOpen,
   Workflow,
+  Network,
   Upload,
   User,
   Wand2,
@@ -53,6 +54,7 @@ export function AppSidebar() {
   const isRollback = pathname.startsWith("/admin/rollback");
   const isDataDictionary = pathname.startsWith("/admin/data-dictionary");
   const isEnrichmentWaterfall = pathname.startsWith("/admin/enrichment-waterfall");
+  const isProviderGovernance = pathname.startsWith("/admin/provider-governance");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -156,6 +158,13 @@ export function AppSidebar() {
           >
             <Scale size={16} aria-hidden />
             Bias monitoring
+          </Link>
+          <Link
+            href="/admin/provider-governance"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isProviderGovernance)}`}
+          >
+            <Network size={16} aria-hidden />
+            Provider governance
           </Link>
         </div>
 

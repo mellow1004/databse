@@ -119,14 +119,18 @@ export async function registerBounceEvent(input: BounceEventInput): Promise<{
   gateDowngraded: boolean;
   quarantined: boolean;
   campaignDeactivated: boolean;
+  escalated: boolean;
+  suppressionId?: string;
 }> {
   const status = input.bounceType === "hard" ? "invalid" : "risky";
   let clientIdForAudit: string | undefined;
+  let escalated = false;
+  let suppressionId: string | undefined;
 
   await db.$transaction(async (tx) => {
     const contact = await tx.contact.findUnique({
       where: { id: input.contactId },
-      select: { id: true, clientId: true, mergedIntoId: true },
+      select: { id: true, clientId: true, mergedIntoId: true, email: true },
     });
     if (!contact) {
       throw new Error(`contact ${input.contactId} not found`);
@@ -153,6 +157,16 @@ export async function registerBounceEvent(input: BounceEventInput): Promise<{
       },
     });
 
+    const bounceEvent = await tx.bounceEvent.create({
+      data: {
+        contactId: input.contactId,
+        bounceType: input.bounceType,
+        reason: input.bounceReason ?? null,
+        source: "ai_sdr_platform",
+      },
+      select: { id: true },
+    });
+
     await tx.contact.update({
       where: { id: input.contactId },
       data: {
@@ -160,6 +174,58 @@ export async function registerBounceEvent(input: BounceEventInput): Promise<{
         lastVerifiedAt: new Date(),
       },
     });
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000);
+    const hardBounceRows = await tx.bounceEvent.findMany({
+      where: {
+        contactId: input.contactId,
+        bounceType: "hard",
+        occurredAt: { gte: thirtyDaysAgo },
+      },
+      orderBy: { occurredAt: "asc" },
+      select: { id: true, escalatedToSuppression: true },
+    });
+    const alreadyEscalated = hardBounceRows.some((r) => r.escalatedToSuppression);
+    if (hardBounceRows.length >= 3 && !alreadyEscalated) {
+      const suppression = await tx.suppression.create({
+        data: {
+          scope: "client_level",
+          clientId: contact.clientId,
+          email: contact.email,
+          reasonCode: "bounce_repeated",
+          reasonDetail: `Auto-escalated after ${hardBounceRows.length} hard bounces in 30 days`,
+          owner: input.actorUserId,
+          source: "ai_sdr_platform",
+          isOptOut: false,
+          releaseApprovalRequired: true,
+        },
+        select: { id: true },
+      });
+      suppressionId = suppression.id;
+      escalated = true;
+      await tx.bounceEvent.updateMany({
+        where: { id: { in: hardBounceRows.map((r) => r.id) } },
+        data: {
+          escalatedToSuppression: true,
+          escalatedSuppressionId: suppression.id,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          clientId: contact.clientId,
+          actorUserId: input.actorUserId,
+          action: "bounce_escalated_to_suppression",
+          resourceType: "suppression",
+          resourceId: suppression.id,
+          recordsAffected: hardBounceRows.length,
+          afterState: JSON.stringify({
+            contactId: input.contactId,
+            latestBounceEventId: bounceEvent.id,
+            hardBounceCount30d: hardBounceRows.length,
+          }),
+        },
+      });
+    }
   });
 
   const bulk = await evaluateAndApplyBulk([input.contactId], input.actorUserId);
@@ -185,6 +251,8 @@ export async function registerBounceEvent(input: BounceEventInput): Promise<{
           decision: ev?.decision ?? null,
           reason: ev?.reason ?? null,
         },
+        escalated,
+        suppressionId: suppressionId ?? null,
       }),
     },
   });
@@ -194,6 +262,8 @@ export async function registerBounceEvent(input: BounceEventInput): Promise<{
     gateDowngraded,
     quarantined,
     campaignDeactivated: true,
+    escalated,
+    suppressionId,
   };
 }
 

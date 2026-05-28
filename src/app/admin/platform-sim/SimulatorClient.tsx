@@ -272,7 +272,9 @@ export function SimulatorClient({
           return;
         }
         toast.success(
-          "Bounce registered. Contact downgraded to gate_1 and quarantined.",
+          data.escalated
+            ? "Bounce registered. This is the 3rd hard bounce in 30 days — contact escalated to suppression."
+            : "Bounce registered. Contact downgraded to gate_1 and quarantined.",
         );
       } else if (confirmKind === "stop") {
         const res = await fetch("/api/ai-sdr/reply", {

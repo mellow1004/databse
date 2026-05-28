@@ -1,0 +1,11 @@
+target_type,target_value,scope,reason_code,is_opt_out,notes
+email,alice@example.com,client_level,manual_flag,false,Imported by ops
+email,bob@example.com,client_level,manual_flag,false,Imported by ops
+email,carol@example.com,client_level,bounce_repeated,false,Repeated hard bounces
+domain,competitor-one.com,global,competitor,true,Competitor domain block
+domain,legalblock.example,domain_level,legal_block,false,Legal request
+contact_id,cm1contactdemo001,client_level,manual_flag,false,Do not contact
+email,optout-1@example.com,client_level,opt_out,true,User opt-out
+email,optout-2@example.com,client_level,opt_out,true,User opt-out
+domain,blocked-supplier.com,domain_level,conflict_of_interest,false,Conflict review
+email,signals@example.com,client_level,provider_signal,false,External provider signal

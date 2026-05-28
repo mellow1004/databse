@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -193,8 +194,11 @@ export default async function SuppressionsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Suppressions</h1>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/admin/suppressions/bulk-import">Bulk import</Link>
+        </Button>
         {pendingApprovals > 0 ? (
           <Badge className="border-transparent bg-amber-100 text-amber-800">
             {pendingApprovals} pending approvals
