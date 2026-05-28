@@ -46,7 +46,8 @@ function relativeTime(d: Date): string {
   return `${day}d ago`;
 }
 
-function alertLabel(level: "ok" | "investigation" | "demotion"): string {
+function alertLabel(level: "ok" | "investigation" | "demotion" | "insufficient_data"): string {
+  if (level === "insufficient_data") return "Insufficient data";
   if (level === "ok") return "OK";
   if (level === "investigation") return "Investigation";
   return "Demotion";
@@ -155,7 +156,7 @@ export default async function AccuracyQAPage({
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {latestStatsByProvider.map(({ provider, stats, nextCycle }) => {
           const rate = stats?.accuracyRate ?? null;
-          const level = stats?.alertLevel ?? "ok";
+          const level = stats?.alertLevel ?? "insufficient_data";
           return (
             <Card key={provider} className="shadow-sm">
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0 pb-2">
@@ -171,13 +172,16 @@ export default async function AccuracyQAPage({
                     getAccuracyRateTextClass(rate),
                   )}
                 >
-                  {rate === null ? "—" : `${rate.toFixed(1)}%`}
+                  {rate === null
+                    ? "Insufficient sample"
+                    : `${rate.toFixed(1)}%`}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {stats ? (
                     <>
                       Latest cycle #{stats.cycleNumber} · {stats.totalSampled} sampled ·{" "}
                       {stats.reviewed} reviewed
+                      {stats.accuracyRate === null ? " · Insufficient sample — need ≥ 10 reviewed records to compute accuracy" : ""}
                     </>
                   ) : (
                     "No samples drawn yet for this provider."
@@ -305,7 +309,7 @@ export default async function AccuracyQAPage({
                           getAccuracyRateTextClass(row.accuracyRate),
                         )}
                       >
-                        {row.accuracyRate === null ? "—" : `${row.accuracyRate.toFixed(1)}%`}
+                        {row.accuracyRate === null ? "Insufficient sample" : `${row.accuracyRate.toFixed(1)}%`}
                       </TableCell>
                       <TableCell>
                         <Badge className={getAccuracyAlertVariant(row.alertLevel)}>

@@ -9,6 +9,11 @@ import { computeAccuracyStats } from "@/services/accuracy";
 
 const GATE_ORDER = ["gate_0", "gate_1", "gate_2", "gate_3"] as const;
 
+function gateLabel(gate: string): string {
+  if (gate === "gate_0") return "Staging / Below floor";
+  return gate.replace(/_/g, " ");
+}
+
 export async function getGateDistribution(): Promise<GateDistributionRow[]> {
   const grouped = await db.contact.groupBy({
     by: ["gateStatus"],
@@ -22,7 +27,7 @@ export async function getGateDistribution(): Promise<GateDistributionRow[]> {
     return {
       gate,
       count,
-      label: `${gate.replace(/_/g, " ")} (${total > 0 ? Math.round((count / total) * 1000) / 10 : 0}%)`,
+      label: `${gateLabel(gate)} (${total > 0 ? Math.round((count / total) * 1000) / 10 : 0}%)`,
     };
   });
 }

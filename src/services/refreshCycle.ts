@@ -2,11 +2,13 @@ import { db } from "@/lib/db";
 import { verifyContactsBulk } from "@/services/verification";
 import { enrichContactsBulk } from "@/services/enrichment";
 import { evaluateAndApplyBulk } from "@/services/gates";
+import { checkBulkApproval } from "@/services/bulkApproval";
 
 export type RefreshCycleInput = {
   /** null/undefined = all clients (cross-client refresh). */
   clientId?: string | null;
   maxContacts?: number;
+  approvalId?: string;
   performAnonymisation?: boolean;
   actorUserId: string;
 };
@@ -48,6 +50,7 @@ export type RefreshCycleResult = {
   totalCostEur: number;
 
   errors?: Array<{ phase: string; message: string }>;
+  pendingApprovalId?: string;
 };
 
 const PROVIDER_PRICING_EUR: Record<string, number> = {
@@ -112,6 +115,54 @@ export async function runRefreshCycle(
 
   const maxContacts = Math.max(0, input.maxContacts ?? 100);
   const performAnonymisation = input.performAnonymisation ?? true;
+
+  if (input.approvalId) {
+    const approval = await db.bulkActionApproval.findUnique({
+      where: { id: input.approvalId },
+      select: { status: true },
+    });
+    if (!approval || approval.status !== "approved") {
+      throw new Error("Provided approvalId is not approved for execution.");
+    }
+  }
+
+  if (maxContacts > 100 && !input.approvalId) {
+    const approvalCheck = await checkBulkApproval({
+      actionType: "bulk_refresh_cycle_run",
+      recordsAffected: maxContacts,
+      requestorId: input.actorUserId,
+      clientId: input.clientId ?? undefined,
+      requestPayload: {
+        clientId: input.clientId ?? null,
+        maxContacts,
+        performAnonymisation,
+      },
+    });
+    if (!approvalCheck.allowed) {
+      return {
+        refreshLogId: "",
+        cycleNumber: 0,
+        startedAt,
+        completedAt: startedAt,
+        durationSeconds: 0,
+        contactsProcessed: 0,
+        verification: { succeeded: 0, failed: 0, creditsByProvider: {} },
+        enrichment: {
+          enriched: 0,
+          noMatch: 0,
+          skipped: 0,
+          failed: 0,
+          conflictsFlagged: 0,
+          creditsByProvider: {},
+        },
+        gates: { promoted: 0, downgraded: 0, unchanged: 0, quarantined: 0 },
+        anonymisation: { candidatesIdentified: 0, anonymised: 0 },
+        costBreakdown: [],
+        totalCostEur: 0,
+        pendingApprovalId: approvalCheck.pendingApprovalId,
+      };
+    }
+  }
 
   // Determine scope.
   const isCrossClient = input.clientId == null;

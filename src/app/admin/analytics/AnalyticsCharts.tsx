@@ -44,7 +44,7 @@ const GATE_HEX: Record<string, string> = {
 };
 
 const gateChartConfig = {
-  gate_0: { label: "Gate 0", color: GATE_HEX.gate_0 },
+  gate_0: { label: "Staging / Below floor", color: GATE_HEX.gate_0 },
   gate_1: { label: "Gate 1", color: GATE_HEX.gate_1 },
   gate_2: { label: "Gate 2", color: GATE_HEX.gate_2 },
   gate_3: { label: "Gate 3", color: GATE_HEX.gate_3 },
@@ -81,6 +81,7 @@ export function AnalyticsCharts({
 }: Props) {
   const gatePieData = gateDistribution.map((g) => ({
     ...g,
+    displayGate: g.gate === "gate_0" ? "Staging / Below floor" : g.gate,
     fill: GATE_HEX[g.gate] ?? "#94a3b8",
   }));
   const gateTotal = gateDistribution.reduce((s, g) => s + g.count, 0);
@@ -121,11 +122,17 @@ export function AnalyticsCharts({
                   const n = row?.count ?? 0;
                   const pct =
                     gateTotal > 0 ? Math.round((n / gateTotal) * 1000) / 10 : 0;
-                  return `${value.replace(/_/g, " ")} · ${n} (${pct}%)`;
+                  const label =
+                    value === "gate_0" ? "Staging / Below floor" : value.replace(/_/g, " ");
+                  return `${label} · ${n} (${pct}%)`;
                 }}
               />
             </PieChart>
           </ChartContainer>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Gate 0 represents records below the trust floor — not yet promoted from staging.
+            The PRD&apos;s three-gate model applies to gates 1-3 only.
+          </p>
         </CardContent>
       </Card>
 

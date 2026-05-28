@@ -8,6 +8,7 @@ type RunBody = {
   clientId?: string;
   maxContacts?: number;
   performAnonymisation?: boolean;
+  approvalId?: string;
 };
 
 export async function POST(req: Request) {
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
       clientId,
       maxContacts: body.maxContacts,
       performAnonymisation: body.performAnonymisation,
+      approvalId: body.approvalId,
       actorUserId,
     });
 

@@ -33,7 +33,7 @@ export type AccuracyStats = {
   incorrect: number;
   pending: number;
   accuracyRate: number | null;
-  alertLevel: "ok" | "investigation" | "demotion";
+  alertLevel: "ok" | "investigation" | "demotion" | "insufficient_data";
 };
 
 /** Parse enrichment_log.rawResponse for a non-empty title claim (fields.title or legacy title). */
@@ -68,6 +68,14 @@ function alertFromRate(rate: number | null): "ok" | "investigation" | "demotion"
   if (rate >= 85) return "ok";
   if (rate >= 75) return "investigation";
   return "demotion";
+}
+
+function alertFromStats(
+  rate: number | null,
+  reviewed: number,
+): "ok" | "investigation" | "demotion" | "insufficient_data" {
+  if (reviewed < 10) return "insufficient_data";
+  return alertFromRate(rate);
 }
 
 /**
@@ -256,7 +264,8 @@ export async function computeAccuracyStats(
   const pending = rows.filter((r) => r.reviewedAt === null).length;
 
   const decided = correct + incorrect;
-  const accuracyRate = decided === 0 ? null : (100 * correct) / decided;
+  const computedRate = decided === 0 ? null : (100 * correct) / decided;
+  const accuracyRate = reviewed < 10 ? null : computedRate;
 
   return {
     provider,
@@ -267,7 +276,7 @@ export async function computeAccuracyStats(
     incorrect,
     pending,
     accuracyRate,
-    alertLevel: alertFromRate(accuracyRate),
+    alertLevel: alertFromStats(accuracyRate, reviewed),
   };
 }
 

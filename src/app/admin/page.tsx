@@ -6,6 +6,8 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -15,7 +17,10 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { db } from "@/lib/db";
+import { getStatusVariant } from "@/lib/badge-helpers";
+import RetentionActions from "./RetentionActions";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +130,8 @@ export default async function AdminDashboardPage() {
     cognismAccuracy,
     apolloAccuracy,
     dsarApproachingDeadline,
+    retentionApproachingCount,
+    retentionRows,
   ] = await Promise.all([
     db.contact.count({ where: { mergedIntoId: null } }),
     db.contact.count({
@@ -161,67 +168,121 @@ export default async function AdminDashboardPage() {
         deadlineAt: { lt: new Date(Date.now() + 7 * 86_400_000) },
       },
     }),
+    db.contact.count({
+      where: {
+        OR: [
+          { retentionStatus: "approaching_review" },
+          { retentionReviewDueAt: { lt: new Date(Date.now() + 30 * 86_400_000) } },
+        ],
+      },
+    }),
+    db.contact.findMany({
+      where: {
+        OR: [
+          { retentionStatus: "approaching_review" },
+          { retentionReviewDueAt: { lt: new Date(Date.now() + 30 * 86_400_000) } },
+        ],
+      },
+      take: 12,
+      orderBy: [{ retentionReviewDueAt: "asc" }, { updatedAt: "desc" }],
+      include: {
+        person: { select: { fullName: true } },
+        company: { select: { legalName: true } },
+      },
+    }),
   ]);
 
-  const batchIds = [
-    ...new Set(
-      auditLogs
-        .map((l) => l.batchId)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  ];
-  const importBatches =
-    batchIds.length > 0
-      ? await db.importBatch.findMany({
-          where: { id: { in: batchIds } },
-          select: { id: true, fileName: true },
-        })
-      : [];
-  const batchFileById = new Map(importBatches.map((b) => [b.id, b.fileName]));
+  const idsByType = new Map<string, Set<string>>();
+  for (const log of auditLogs) {
+    if (!log.resourceId) continue;
+    const set = idsByType.get(log.resourceType) ?? new Set<string>();
+    set.add(log.resourceId);
+    idsByType.set(log.resourceType, set);
+  }
+  const contactIds = [...(idsByType.get("contact") ?? new Set())];
+  const batchIds = [...(idsByType.get("import_batch") ?? new Set())];
+  const companyIds = [...(idsByType.get("company") ?? new Set())];
+  const suppressionIds = [...(idsByType.get("suppression") ?? new Set())];
+  const quarantineIds = [...(idsByType.get("quarantine_log") ?? new Set())];
+  const refreshIds = [...(idsByType.get("refresh_log") ?? new Set())];
 
-  const contactIds = [
-    ...new Set(
-      auditLogs
-        .filter((l) => l.resourceType === "contact" && l.resourceId)
-        .map((l) => l.resourceId as string),
-    ),
-  ];
-  const contacts =
-    contactIds.length > 0
-      ? await db.contact.findMany({
+  const [contacts, importBatches, companies, suppressions, quarantineLogs, refreshLogs] = await Promise.all([
+    contactIds.length
+      ? db.contact.findMany({
           where: { id: { in: contactIds } },
-          select: {
-            id: true,
-            person: { select: { fullName: true } },
-          },
+          select: { id: true, email: true, person: { select: { fullName: true } } },
         })
-      : [];
-  const contactNameById = new Map(
-    contacts.map((c) => [c.id, c.person.fullName]),
-  );
+      : [],
+    batchIds.length
+      ? db.importBatch.findMany({ where: { id: { in: batchIds } }, select: { id: true, fileName: true } })
+      : [],
+    companyIds.length
+      ? db.company.findMany({ where: { id: { in: companyIds } }, select: { id: true, legalName: true } })
+      : [],
+    suppressionIds.length
+      ? db.suppression.findMany({
+          where: { id: { in: suppressionIds } },
+          select: { id: true, scope: true, email: true, domain: true },
+        })
+      : [],
+    quarantineIds.length
+      ? db.quarantineLog.findMany({
+          where: { id: { in: quarantineIds } },
+          select: { id: true, contactId: true },
+        })
+      : [],
+    refreshIds.length
+      ? db.refreshLog.findMany({
+          where: { id: { in: refreshIds } },
+          select: { id: true, cycleNumber: true },
+        })
+      : [],
+  ]);
+  const contactById = new Map(contacts.map((c) => [c.id, c]));
+  const batchById = new Map(importBatches.map((b) => [b.id, b]));
+  const companyById = new Map(companies.map((c) => [c.id, c]));
+  const suppressionById = new Map(suppressions.map((s) => [s.id, s]));
+  const quarantineById = new Map(quarantineLogs.map((q) => [q.id, q]));
+  const refreshById = new Map(refreshLogs.map((r) => [r.id, r]));
 
-  function resourceLine(log: (typeof auditLogs)[0]): string {
-    const fromBatch = log.batchId ? batchFileById.get(log.batchId) : undefined;
-    if (fromBatch) return fromBatch;
-    if (log.resourceType === "contact" && log.resourceId) {
-      const name = contactNameById.get(log.resourceId);
-      if (name) return name;
-      return `Contact ${log.resourceId.slice(0, 8)}…`;
+  function resourceNode(log: (typeof auditLogs)[0]): ReactNode {
+    if (!log.resourceId) return <span className="text-muted-foreground">—</span>;
+    if (log.resourceType === "contact") {
+      const c = contactById.get(log.resourceId);
+      const label = c ? `${c.person.fullName} (${c.email ?? "no email"})` : `…${log.resourceId.slice(-6)}`;
+      return <Link href={`/admin/contacts/${log.resourceId}`} className="hover:underline">{label}</Link>;
     }
-    if (log.afterState) {
-      try {
-        const parsed = JSON.parse(log.afterState) as { fileName?: string };
-        if (parsed.fileName) return parsed.fileName;
-      } catch {
-        /* ignore */
+    if (log.resourceType === "import_batch") {
+      const b = batchById.get(log.resourceId);
+      const label = b?.fileName ?? `…${log.resourceId.slice(-6)}`;
+      return <Link href={`/admin/intake/batches/${log.resourceId}`} className="hover:underline">{label}</Link>;
+    }
+    if (log.resourceType === "company") {
+      const c = companyById.get(log.resourceId);
+      const label = c?.legalName ?? `…${log.resourceId.slice(-6)}`;
+      return <Link href="/admin/dedup" className="hover:underline">{label}</Link>;
+    }
+    if (log.resourceType === "suppression") {
+      const s = suppressionById.get(log.resourceId);
+      const target = s?.email ?? s?.domain ?? "target";
+      const label = s ? `${s.scope} suppression (${target})` : `…${log.resourceId.slice(-6)}`;
+      return <Link href="/admin/suppressions" className="hover:underline">{label}</Link>;
+    }
+    if (log.resourceType === "quarantine_log") {
+      const q = quarantineById.get(log.resourceId);
+      if (q?.contactId) {
+        const c = contactById.get(q.contactId);
+        const label = c ? c.person.fullName : `…${q.contactId.slice(-6)}`;
+        return <Link href="/admin/quarantine" className="hover:underline">{label}</Link>;
       }
+      return <span className="text-muted-foreground">…{log.resourceId.slice(-6)}</span>;
     }
-    if (log.batchId) return `Batch ${log.batchId}`;
-    if (log.resourceType && log.resourceId) {
-      return `${log.resourceType} ${log.resourceId.slice(0, 8)}…`;
+    if (log.resourceType === "refresh_log") {
+      const r = refreshById.get(log.resourceId);
+      const label = r ? `Refresh cycle #${r.cycleNumber}` : `…${log.resourceId.slice(-6)}`;
+      return <Link href="/admin/refresh-cycle" className="hover:underline">{label}</Link>;
     }
-    if (log.resourceType) return log.resourceType;
-    return "—";
+    return <span className="text-muted-foreground">…{log.resourceId.slice(-6)}</span>;
   }
 
   return (
@@ -266,7 +327,7 @@ export default async function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-slate-600">
@@ -321,6 +382,18 @@ export default async function AdminDashboardPage() {
             </p>
           </CardContent>
         </Card>
+        <Card className="shadow-sm">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-600">
+              Approaching retention review
+            </CardTitle>
+            <Users className="size-4 text-slate-400" aria-hidden />
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold tabular-nums">{retentionApproachingCount}</p>
+            <p className="text-xs text-slate-500">Notification window: month 12 of 13.</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
@@ -335,7 +408,7 @@ export default async function AdminDashboardPage() {
                   <p className="text-sm font-medium text-slate-900">
                     {auditVerbLabel(log.action)}
                   </p>
-                  <p className="text-xs text-slate-600">{resourceLine(log)}</p>
+                  <p className="text-xs text-slate-600">{resourceNode(log)}</p>
                   <p className="mt-1 text-xs text-slate-400">
                     {formatRelativeTime(log.createdAt)}
                   </p>
@@ -409,6 +482,54 @@ export default async function AdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Approaching retention threshold</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Contact</TableHead>
+                <TableHead>Company</TableHead>
+                <TableHead>Last verified</TableHead>
+                <TableHead>Retention review due</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {retentionRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    No contacts approaching retention review.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                retentionRows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>
+                      <Link href={`/admin/contacts/${r.id}`} className="hover:underline">
+                        {r.person.fullName}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{r.company.legalName}</TableCell>
+                    <TableCell>{r.lastVerifiedAt ? formatRelativeTime(r.lastVerifiedAt) : "—"}</TableCell>
+                    <TableCell>{r.retentionReviewDueAt ? formatRelativeTime(r.retentionReviewDueAt) : "—"}</TableCell>
+                    <TableCell>
+                      <Badge className={getStatusVariant(r.retentionStatus)}>{r.retentionStatus}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <RetentionActions contactId={r.id} />
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       <p className="text-center text-xs text-slate-500">
         Live demo?{" "}

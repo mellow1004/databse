@@ -145,8 +145,9 @@ export function getQuarantineReviewStateVariant(state: string): string {
 }
 
 export function getAccuracyAlertVariant(
-  level: "ok" | "investigation" | "demotion",
+  level: "ok" | "investigation" | "demotion" | "insufficient_data",
 ): string {
+  if (level === "insufficient_data") return SLATE;
   if (level === "ok") return EMERALD;
   if (level === "investigation") return AMBER;
   return ROSE;

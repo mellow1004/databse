@@ -70,11 +70,13 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
 
   const [clientId, setClientId] = useState("all");
   const [maxContacts, setMaxContacts] = useState(100);
+  const [approvalId, setApprovalId] = useState("");
   const [performAnonymisation, setPerformAnonymisation] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [latestResult, setLatestResult] = useState<RefreshCycleResultJson | null>(
     null,
   );
+  const [pendingApprovalId, setPendingApprovalId] = useState<string | null>(null);
   const [lastRunAnonymisation, setLastRunAnonymisation] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +92,7 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
     setIsRunning(true);
     setError(null);
     setLatestResult(null);
+    setPendingApprovalId(null);
     setLastRunAnonymisation(performAnonymisation);
 
     try {
@@ -100,6 +103,7 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
           ...(clientId !== "all" ? { clientId } : {}),
           maxContacts,
           performAnonymisation,
+          approvalId: approvalId.trim() || undefined,
         }),
       });
 
@@ -109,6 +113,12 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
         const msg = data.error ?? "Refresh cycle failed";
         setError(msg);
         toast.error(msg);
+        return;
+      }
+
+      if (data.pendingApprovalId) {
+        setPendingApprovalId(data.pendingApprovalId);
+        toast.message(`Bulk approval required: ${data.pendingApprovalId}`);
         return;
       }
 
@@ -138,7 +148,7 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
           <CardTitle>Run new refresh cycle</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-4">
             <div className="space-y-2">
               <Label htmlFor="refresh-client">Client</Label>
               <Select value={clientId} onValueChange={setClientId} disabled={isRunning}>
@@ -183,6 +193,17 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
                 Anonymise stale records
               </Label>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="refresh-approval">Approval id (optional)</Label>
+              <Input
+                id="refresh-approval"
+                value={approvalId}
+                disabled={isRunning}
+                onChange={(e) => setApprovalId(e.target.value)}
+                placeholder="cm... (approved bulk action)"
+                className="font-mono text-xs"
+              />
+            </div>
           </div>
 
           <Button type="button" onClick={handleRun} disabled={isRunning}>
@@ -208,6 +229,15 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
           {error ? (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          {pendingApprovalId ? (
+            <Alert>
+              <AlertTitle>Bulk approval required</AlertTitle>
+              <AlertDescription>
+                Request created: <span className="font-mono text-xs">{pendingApprovalId}</span>. Approve it in
+                <span> /admin/bulk-approvals</span> and rerun with that approval id.
+              </AlertDescription>
             </Alert>
           ) : null}
         </CardContent>

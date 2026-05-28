@@ -33,6 +33,7 @@ export type RefreshCycleResultJson = {
   costBreakdown: Array<{ provider: string; credits: number; eurCost: number }>;
   totalCostEur: number;
   errors?: Array<{ phase: string; message: string }>;
+  pendingApprovalId?: string;
 };
 
 export type RefreshLogRow = {

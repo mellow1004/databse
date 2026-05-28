@@ -45,7 +45,8 @@ export default async function BiasMonitoringPage() {
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
             {report.overallGate2Count} of {report.totalActive} active contacts (
-            {report.totalSkippedSmallSample} excluded due to small sample size)
+            {report.totalSkippedSmallSample} excluded due to small sample size). Baseline is
+            gate_2 rate across all active contacts including gate_0.
           </p>
         </CardContent>
       </Card>
