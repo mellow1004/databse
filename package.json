@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "prisma migrate dev",
@@ -22,7 +22,8 @@
     "test:gates": "tsx scripts/test-gates.ts",
     "test:suppression": "tsx scripts/test-suppression.ts",
     "test:ai-sdr": "tsx scripts/test-ai-sdr.ts",
-    "test:refresh-cycle": "tsx scripts/test-refresh-cycle.ts"
+    "test:refresh-cycle": "tsx scripts/test-refresh-cycle.ts",
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
