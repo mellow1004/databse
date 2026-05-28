@@ -1,47 +1,30 @@
 import { NextResponse } from "next/server";
-import { requireDataOwnerActorId } from "@/lib/data-owner-actor";
-import { runRefreshCycle } from "@/services/refreshCycle";
+import { previewRefreshCycle } from "@/services/refreshCycle";
 
-export const maxDuration = 90;
-
-type RunBody = {
+type PreviewBody = {
   clientId?: string;
   maxContacts?: number;
   maxActiveContacts?: number;
   maxDormantContacts?: number;
   maxFrozenContacts?: number;
-  performAnonymisation?: boolean;
-  approvalId?: string;
 };
 
 export async function POST(req: Request) {
   try {
-    const actorUserId = await requireDataOwnerActorId();
-    const body = (await req.json()) as RunBody;
-
+    const body = (await req.json()) as PreviewBody;
     const clientId =
       body.clientId === undefined || body.clientId === "" || body.clientId === "__all__"
         ? null
         : body.clientId;
-
-    const result = await runRefreshCycle({
+    const preview = await previewRefreshCycle({
       clientId,
       maxContacts: body.maxContacts,
       maxActiveContacts: body.maxActiveContacts,
       maxDormantContacts: body.maxDormantContacts,
       maxFrozenContacts: body.maxFrozenContacts,
-      performAnonymisation: body.performAnonymisation,
-      approvalId: body.approvalId,
-      actorUserId,
     });
-
-    return NextResponse.json({
-      ...result,
-      startedAt: result.startedAt.toISOString(),
-      completedAt: result.completedAt.toISOString(),
-    });
+    return NextResponse.json(preview);
   } catch (e) {
-    console.error(e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "internal_error" },
       { status: 500 },

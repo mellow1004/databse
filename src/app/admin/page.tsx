@@ -132,6 +132,7 @@ export default async function AdminDashboardPage() {
     dsarApproachingDeadline,
     retentionApproachingCount,
     retentionRows,
+    providerBudgetAlerts,
   ] = await Promise.all([
     db.contact.count({ where: { mergedIntoId: null } }),
     db.contact.count({
@@ -189,6 +190,21 @@ export default async function AdminDashboardPage() {
         person: { select: { fullName: true } },
         company: { select: { legalName: true } },
       },
+    }),
+    db.providerBudget.findMany({
+      where: {
+        status: "active",
+        alertedAt: { not: null },
+        periodEnd: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        provider: true,
+        spentEur: true,
+        budgetEur: true,
+      },
+      orderBy: { alertedAt: "desc" },
+      take: 5,
     }),
   ]);
 
@@ -303,6 +319,17 @@ export default async function AdminDashboardPage() {
             <Link href="/admin/dsar?filter=overdue" className="font-medium underline underline-offset-4">
               Review now →
             </Link>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {providerBudgetAlerts.length > 0 ? (
+        <Alert>
+          <AlertDescription>
+            {providerBudgetAlerts.map((b) => {
+              const pct = b.budgetEur > 0 ? Math.round((b.spentEur / b.budgetEur) * 100) : 0;
+              return `Provider ${b.provider} at ${pct}% of monthly budget.`;
+            }).join(" ")}
           </AlertDescription>
         </Alert>
       ) : null}
