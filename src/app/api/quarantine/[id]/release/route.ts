@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-
-const DERIVED_FIELD_VERSION = "v1";
-const TARGET_GATE = "gate_1";
+import { approveQuarantineRelease } from "@/services/quarantine";
 
 /**
  * POST /api/quarantine/:id/release
@@ -80,74 +78,10 @@ export async function POST(
     }
 
     const releasedAt = new Date();
-
-    await db.$transaction(async (tx) => {
-      const fresh = await tx.quarantineLog.findUnique({ where: { id } });
-      if (!fresh || fresh.reviewState === "released") return;
-
-      await tx.quarantineLog.update({
-        where: { id },
-        data: {
-          reviewState: "released",
-          releasedAt,
-          releasedBy: dataOwner.id,
-          releaseReason: reason,
-        },
-      });
-
-      if (fresh.contactId) {
-        const contact = await tx.contact.findUnique({
-          where: { id: fresh.contactId },
-          select: {
-            id: true,
-            clientId: true,
-            gateStatus: true,
-            mergedIntoId: true,
-          },
-        });
-        if (contact && !contact.mergedIntoId) {
-          const prevGate = contact.gateStatus;
-          await tx.contact.update({
-            where: { id: contact.id },
-            data: {
-              quarantineReason: null,
-              gateStatus: TARGET_GATE,
-              derivedFieldVersion: DERIVED_FIELD_VERSION,
-            },
-          });
-          if (prevGate !== TARGET_GATE) {
-            await tx.gateStatusHistory.create({
-              data: {
-                clientId: contact.clientId,
-                contactId: contact.id,
-                fromGate: prevGate,
-                toGate: TARGET_GATE,
-                reason: "quarantine_released",
-                actor: dataOwner.id,
-                derivedFieldVersion: DERIVED_FIELD_VERSION,
-              },
-            });
-          }
-        }
-
-        await tx.auditLog.create({
-          data: {
-            clientId: fresh.clientId,
-            actorUserId: dataOwner.id,
-            action: "quarantine_released",
-            resourceType: "contact",
-            resourceId: fresh.contactId,
-            recordsAffected: 1,
-            afterState: JSON.stringify({
-              quarantineLogId: id,
-              releaseReason: reason,
-              releasedAt: releasedAt.toISOString(),
-              gateStatus: TARGET_GATE,
-              quarantineReasonCleared: true,
-            }),
-          },
-        });
-      }
+    await approveQuarantineRelease({
+      quarantineLogId: id,
+      approverId: dataOwner.id,
+      approvalReason: reason,
     });
 
     return NextResponse.json({ ok: true, releasedAt: releasedAt.toISOString() });

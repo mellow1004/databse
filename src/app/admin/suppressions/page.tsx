@@ -156,7 +156,11 @@ export default async function SuppressionsPage({
       : "active";
 
   const where: Prisma.SuppressionWhereInput = {};
-  if (selectedStatus !== "all") where.releaseStatus = selectedStatus;
+  if (selectedStatus === "active") {
+    where.releaseStatus = { in: ["active", "request_pending"] };
+  } else if (selectedStatus === "released") {
+    where.releaseStatus = "released";
+  }
   if (selectedScope !== "all") where.scope = selectedScope;
   if (selectedClientId) {
     where.OR = [
@@ -184,12 +188,20 @@ export default async function SuppressionsPage({
   const clientById = new Map(clients.map((c) => [c.id, c.name]));
 
   const totalActive = rows.filter((r) => r.releaseStatus === "active").length;
-  const totalReleased = rows.length - totalActive;
+  const totalReleased = rows.filter((r) => r.releaseStatus === "released").length;
+  const pendingApprovals = rows.filter((r) => r.releaseStatus === "request_pending").length;
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">Suppressions</h1>
+        {pendingApprovals > 0 ? (
+          <Badge className="border-transparent bg-amber-100 text-amber-800">
+            {pendingApprovals} pending approvals
+          </Badge>
+        ) : null}
+      </div>
+      <div>
         <p className="text-sm text-slate-600">
           Three-scope do-not-contact rules: global, client-level, domain-level.
         </p>
@@ -207,7 +219,8 @@ export default async function SuppressionsPage({
         <span className="font-semibold tabular-nums text-slate-900">{rows.length}</span>{" "}
         suppression{rows.length === 1 ? "" : "s"} (
         <span className="tabular-nums">{totalActive}</span> active,{" "}
-        <span className="tabular-nums">{totalReleased}</span> released).
+        <span className="tabular-nums">{totalReleased}</span> released,{" "}
+        <span className="tabular-nums">{pendingApprovals}</span> pending).
       </p>
 
       <AddSuppressionForm clients={clients.map((c) => ({ id: c.id, name: c.name }))} />
@@ -279,6 +292,9 @@ export default async function SuppressionsPage({
                           <Badge className={getStatusVariant(r.releaseStatus)}>
                             {r.releaseStatus}
                           </Badge>
+                          {r.releaseStatus === "request_pending" ? (
+                            <span className="text-xs text-amber-700">Awaiting approval</span>
+                          ) : null}
                           {r.isOptOut ? (
                             <span
                               className="inline-flex text-amber-600"
@@ -294,8 +310,14 @@ export default async function SuppressionsPage({
                         {relativeTime(r.createdAt)}
                       </TableCell>
                       <TableCell className="align-top">
-                        {r.releaseStatus === "active" ? (
-                          <ReleaseButton suppressionId={r.id} />
+                        {r.releaseStatus === "active" || r.releaseStatus === "request_pending" ? (
+                          <ReleaseButton
+                            suppressionId={r.id}
+                            scope={r.scope}
+                            reasonCode={r.reasonCode}
+                            isOptOut={r.isOptOut}
+                            releaseStatus={r.releaseStatus}
+                          />
                         ) : (
                           <div className="text-xs text-muted-foreground">
                             <div>

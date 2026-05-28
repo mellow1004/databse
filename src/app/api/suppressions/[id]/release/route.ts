@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requestSuppressionRelease } from "@/services/suppression";
 
 /**
  * POST /api/suppressions/:id/release
  *
- * Body: { reason: string }
+ * Body: { reason: string, regulatoryReviewNotes?: string }
  *
  * Releasing a suppression is a sensitive action — it potentially re-opens
  * outreach to a person/domain that was previously off-limits. Always logged.
@@ -15,7 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  let body: { reason?: string };
+  let body: { reason?: string; regulatoryReviewNotes?: string };
   try {
     body = (await req.json()) as { reason?: string };
   } catch {
@@ -34,23 +35,6 @@ export async function POST(
   }
 
   try {
-    const row = await db.suppression.findUnique({ where: { id } });
-    if (!row) {
-      return NextResponse.json(
-        { error: "not_found", message: `Suppression ${id} not found.` },
-        { status: 404 },
-      );
-    }
-    if (row.releaseStatus !== "active") {
-      return NextResponse.json(
-        {
-          error: "already_released",
-          message: `Suppression ${id} is already in status '${row.releaseStatus}'.`,
-        },
-        { status: 400 },
-      );
-    }
-
     const dataOwner = await db.user.findFirst({
       where: { role: "data_owner" },
       select: { id: true },
@@ -62,38 +46,21 @@ export async function POST(
       );
     }
 
-    const releasedAt = new Date();
-    await db.$transaction(async (tx) => {
-      await tx.suppression.update({
-        where: { id },
-        data: {
-          releaseStatus: "released",
-          releasedAt,
-          releasedBy: dataOwner.id,
-          releaseReason: reason,
-        },
-      });
-      await tx.auditLog.create({
-        data: {
-          clientId: row.clientId,
-          actorUserId: dataOwner.id,
-          action: "suppression_released",
-          resourceType: "suppression",
-          resourceId: id,
-          beforeState: JSON.stringify({
-            scope: row.scope,
-            reasonCode: row.reasonCode,
-            isOptOut: row.isOptOut,
-            contactId: row.contactId,
-            email: row.email,
-            domain: row.domain,
-          }),
-          afterState: JSON.stringify({ releaseStatus: "released", reason }),
-        },
-      });
+    const out = await requestSuppressionRelease({
+      suppressionId: id,
+      reason,
+      requestorId: dataOwner.id,
     });
-
-    return NextResponse.json({ released: true, releasedAt: releasedAt.toISOString() });
+    if (out.status === "request_pending") {
+      return NextResponse.json(
+        {
+          status: "request_pending",
+          message: "Release request created and awaiting Data Owner approval.",
+        },
+        { status: 202 },
+      );
+    }
+    return NextResponse.json({ status: "released_directly" }, { status: 200 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[POST /api/suppressions/${id}/release]`, err);

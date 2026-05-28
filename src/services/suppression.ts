@@ -32,6 +32,7 @@
  */
 
 import { db } from "@/lib/db";
+import { suppressionRequiresApproval } from "@/lib/suppression-governance";
 import {
   normalizeDomain,
   normalizeEmail,
@@ -253,3 +254,223 @@ export async function filterTargetableContacts(
 
 // Exported for tests / future targeting query reuse.
 export { normalizeDomain };
+
+async function computeAffectedClientCount(suppression: {
+  scope: string;
+  clientId: string | null;
+  contactId: string | null;
+  email: string | null;
+  domain: string | null;
+}): Promise<number> {
+  if (suppression.scope === "client_level") return 1;
+
+  const whereParts: Array<Record<string, unknown>> = [];
+  if (suppression.contactId) whereParts.push({ id: suppression.contactId });
+  if (suppression.email) whereParts.push({ email: suppression.email });
+  if (suppression.domain) {
+    whereParts.push({
+      OR: [
+        { company: { rootDomain: suppression.domain } },
+        { company: { domainAliases: { some: { aliasDomain: suppression.domain } } } },
+      ],
+    });
+  }
+
+  const rows = await db.contact.findMany({
+    where:
+      whereParts.length > 0
+        ? { OR: whereParts }
+        : undefined,
+    distinct: ["clientId"],
+    select: { clientId: true },
+  });
+  return rows.length;
+}
+
+async function releaseSuppressionDirect(input: {
+  suppressionId: string;
+  actorUserId: string;
+  releaseReason: string;
+}): Promise<void> {
+  const suppression = await db.suppression.findUnique({ where: { id: input.suppressionId } });
+  if (!suppression) throw new Error(`Suppression ${input.suppressionId} not found.`);
+  if (suppression.releaseStatus === "released") return;
+
+  const releasedAt = new Date();
+  await db.$transaction(async (tx) => {
+    await tx.suppression.update({
+      where: { id: input.suppressionId },
+      data: {
+        releaseStatus: "released",
+        releasedAt,
+        releasedBy: input.actorUserId,
+        releaseReason: input.releaseReason,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        clientId: suppression.clientId,
+        actorUserId: input.actorUserId,
+        action: "suppression_released",
+        resourceType: "suppression",
+        resourceId: suppression.id,
+        recordsAffected: 1,
+        afterState: JSON.stringify({
+          releaseStatus: "released",
+          reason: input.releaseReason,
+        }),
+      },
+    });
+  });
+}
+
+export async function requestSuppressionRelease(input: {
+  suppressionId: string;
+  reason: string;
+  requestorId: string;
+}): Promise<{ status: "request_pending" | "released_directly" }> {
+  const reason = input.reason.trim();
+  if (!reason) throw new Error("A non-empty release reason is required.");
+
+  const suppression = await db.suppression.findUnique({ where: { id: input.suppressionId } });
+  if (!suppression) throw new Error(`Suppression ${input.suppressionId} not found.`);
+  if (suppression.releaseStatus === "released") return { status: "released_directly" };
+
+  const decision = suppressionRequiresApproval(suppression);
+  if (!decision.requiresApproval) {
+    await releaseSuppressionDirect({
+      suppressionId: input.suppressionId,
+      actorUserId: input.requestorId,
+      releaseReason: reason,
+    });
+    return { status: "released_directly" };
+  }
+
+  const affectedClientCount = await computeAffectedClientCount(suppression);
+  const now = new Date();
+  await db.$transaction(async (tx) => {
+    await tx.suppression.update({
+      where: { id: input.suppressionId },
+      data: {
+        releaseStatus: "request_pending",
+        releaseApprovalRequired: true,
+        releaseRequestedBy: input.requestorId,
+        releaseRequestedAt: now,
+        releaseApprovalReason: reason,
+        affectedClientCount,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        clientId: suppression.clientId,
+        actorUserId: input.requestorId,
+        action: "suppression_release_requested",
+        resourceType: "suppression",
+        resourceId: suppression.id,
+        recordsAffected: 1,
+        afterState: JSON.stringify({
+          releaseStatus: "request_pending",
+          reason,
+          affectedClientCount,
+          requiresRegulatoryReview: decision.requiresRegulatoryReview,
+        }),
+      },
+    });
+  });
+  return { status: "request_pending" };
+}
+
+export async function approveSuppressionRelease(input: {
+  suppressionId: string;
+  approverId: string;
+  approvalReason: string;
+  regulatoryReviewNotes?: string;
+}): Promise<void> {
+  const approvalReason = input.approvalReason.trim();
+  if (!approvalReason) throw new Error("approvalReason is required.");
+
+  const suppression = await db.suppression.findUnique({ where: { id: input.suppressionId } });
+  if (!suppression) throw new Error(`Suppression ${input.suppressionId} not found.`);
+  if (suppression.releaseStatus !== "request_pending") {
+    throw new Error("Suppression is not awaiting approval.");
+  }
+  if (suppression.isOptOut && !(input.regulatoryReviewNotes ?? "").trim()) {
+    throw new Error("regulatoryReviewNotes are required for opt-out suppressions.");
+  }
+
+  const now = new Date();
+  await db.$transaction(async (tx) => {
+    await tx.suppression.update({
+      where: { id: input.suppressionId },
+      data: {
+        releaseApprovedBy: input.approverId,
+        releaseApprovedAt: now,
+        releaseStatus: "released",
+        releasedAt: now,
+        releasedBy: input.approverId,
+        releaseReason: approvalReason,
+        ...(suppression.isOptOut
+          ? {
+              regulatoryReviewCompleted: true,
+              regulatoryReviewBy: input.approverId,
+              regulatoryReviewAt: now,
+              regulatoryReviewNotes: (input.regulatoryReviewNotes ?? "").trim(),
+            }
+          : {}),
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        clientId: suppression.clientId,
+        actorUserId: input.approverId,
+        action: "suppression_release_approved",
+        resourceType: "suppression",
+        resourceId: suppression.id,
+        recordsAffected: 1,
+        afterState: JSON.stringify({
+          releaseStatus: "released",
+          approvalReason,
+          regulatoryReviewNotes: input.regulatoryReviewNotes ?? null,
+        }),
+      },
+    });
+  });
+}
+
+export async function rejectSuppressionRelease(input: {
+  suppressionId: string;
+  actorUserId: string;
+  rejectionReason: string;
+}): Promise<void> {
+  const rejectionReason = input.rejectionReason.trim();
+  if (!rejectionReason) throw new Error("rejectionReason is required.");
+  const suppression = await db.suppression.findUnique({ where: { id: input.suppressionId } });
+  if (!suppression) throw new Error(`Suppression ${input.suppressionId} not found.`);
+  if (suppression.releaseStatus !== "request_pending") {
+    throw new Error("Suppression is not awaiting approval.");
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.suppression.update({
+      where: { id: input.suppressionId },
+      data: {
+        releaseStatus: "active",
+        releaseApprovalRequired: false,
+        releaseRequestedBy: null,
+        releaseRequestedAt: null,
+        releaseApprovalReason: null,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        clientId: suppression.clientId,
+        actorUserId: input.actorUserId,
+        action: "suppression_release_rejected",
+        resourceType: "suppression",
+        resourceId: suppression.id,
+        recordsAffected: 1,
+        afterState: JSON.stringify({ rejectionReason }),
+      },
+    });
+  });
+}

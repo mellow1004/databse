@@ -71,6 +71,7 @@ export function getStatusVariant(status: string | null | undefined): string {
 
   if (
     s === "conflict_pending" ||
+    s === "request_pending" ||
     s === "risky" ||
     s === "aging" ||
     s === "ready_for_review" ||

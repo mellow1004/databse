@@ -4,6 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   quarantineLogId: string;
@@ -20,6 +29,8 @@ export default function QuarantineRowActions({
   const router = useRouter();
   const [releaseLoading, setReleaseLoading] = useState(false);
   const [markLoading, setMarkLoading] = useState(false);
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const [releaseReason, setReleaseReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const releaseDisabled = mergedIntoId !== null;
@@ -28,9 +39,7 @@ export default function QuarantineRowActions({
 
   async function onRelease() {
     if (releaseDisabled) return;
-    const reason = window.prompt("Reason for releasing this contact back to gate_1:");
-    if (reason === null) return;
-    const trimmed = reason.trim();
+    const trimmed = releaseReason.trim();
     if (!trimmed) {
       setError("A non-empty reason is required.");
       return;
@@ -48,6 +57,8 @@ export default function QuarantineRowActions({
         setError(data.message || data.error || `HTTP ${res.status}`);
         return;
       }
+      setReleaseOpen(false);
+      setReleaseReason("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -90,14 +101,30 @@ export default function QuarantineRowActions({
                 <Lock className="size-3.5" aria-hidden />
               </span>
             ) : null}
-            <Button
-              type="button"
-              size="sm"
-              onClick={onRelease}
-              disabled={releaseLoading || releaseDisabled}
-            >
-              {releaseLoading ? "Releasing…" : "Release"}
-            </Button>
+            <Dialog open={releaseOpen} onOpenChange={setReleaseOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" size="sm" disabled={releaseLoading || releaseDisabled}>
+                  {releaseLoading ? "Releasing…" : "Release"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Approve quarantine release</DialogTitle>
+                </DialogHeader>
+                <Textarea
+                  value={releaseReason}
+                  onChange={(e) => setReleaseReason(e.target.value)}
+                  placeholder="Approval reason"
+                  rows={3}
+                />
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setReleaseOpen(false)}>Cancel</Button>
+                  <Button onClick={onRelease} disabled={releaseLoading}>
+                    {releaseLoading ? "Releasing…" : "Approve release"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </span>
         ) : null}
         {canMarkReviewed ? (

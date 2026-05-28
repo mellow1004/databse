@@ -39,6 +39,11 @@ const FRESHNESS_WINDOW_DAYS = 90;
 const FRESHNESS_WINDOW_MS = FRESHNESS_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 const DERIVED_FIELD_VERSION = "v1";
 
+function quarantineApprovalPathFromReason(reasonCode: string): "auto" | "manual" {
+  if (reasonCode === "stale") return "auto";
+  return "manual";
+}
+
 // ============================================================
 // Public types
 // ============================================================
@@ -239,6 +244,11 @@ export async function applyGateDecision(
             : null,
           actor: actorUserId,
           reviewState: "pending",
+          previousGate: evaluation.currentGate,
+          proposedRestoredGate: evaluation.currentGate,
+          approvalPath: quarantineApprovalPathFromReason("bounce"),
+          approvalRequestedBy: null,
+          approvalRequestedAt: null,
         },
       });
     }

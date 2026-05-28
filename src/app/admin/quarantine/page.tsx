@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FilterX } from "lucide-react";
+import { AlertTriangle, FilterX } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -119,6 +119,7 @@ export default async function QuarantineReviewPage({
     : [];
 
   const contactById = new Map(contacts.map((c) => [c.id, c]));
+  const clientById = new Map(clients.map((c) => [c.id, c.name]));
 
   const actorIds = Array.from(new Set(rows.map((r) => r.actor)));
   const releasedByIds = Array.from(
@@ -142,6 +143,16 @@ export default async function QuarantineReviewPage({
     return actor;
   }
 
+  const now = Date.now();
+  const THIRTY_DAYS_MS = 30 * 86_400_000;
+  const escalatedCount = rows.filter(
+    (r) => r.reviewState === "pending" && now - r.createdAt.getTime() > THIRTY_DAYS_MS,
+  ).length;
+  const pendingCount = rows.filter((r) => r.reviewState === "pending").length;
+  const manualApprovalRequired = rows.filter(
+    (r) => r.reviewState === "pending" && (r.approvalPath ?? "manual") === "manual",
+  ).length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -150,6 +161,11 @@ export default async function QuarantineReviewPage({
           {globalPendingCount} pending across all clients
         </Badge>
       </div>
+      <p className="text-xs text-slate-600">
+        <span className="font-medium">{escalatedCount}</span> escalated ·{" "}
+        <span className="font-medium">{pendingCount}</span> pending ·{" "}
+        <span className="font-medium">{manualApprovalRequired}</span> manual approval required
+      </p>
       <p className="text-sm text-slate-600">
         Contacts removed from active campaigns pending Data Owner review.
       </p>
@@ -173,8 +189,10 @@ export default async function QuarantineReviewPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Contact</TableHead>
+                <TableHead>Client</TableHead>
                 <TableHead>Company</TableHead>
                 <TableHead>Reason</TableHead>
+                <TableHead>Gate flow</TableHead>
                 <TableHead>Detail</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>Added</TableHead>
@@ -185,7 +203,7 @@ export default async function QuarantineReviewPage({
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-16">
+                  <TableCell colSpan={10} className="py-16">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
                       <FilterX className="size-12 text-muted-foreground/80" aria-hidden />
                       <p className="text-sm text-slate-600">
@@ -199,6 +217,9 @@ export default async function QuarantineReviewPage({
                   const c = r.contactId ? contactById.get(r.contactId) : undefined;
                   const personEmail = c?.person.primaryEmail ?? c?.email ?? null;
                   const mergedIntoId = c?.mergedIntoId ?? null;
+                  const isEscalated =
+                    r.reviewState === "pending" &&
+                    now - r.createdAt.getTime() > THIRTY_DAYS_MS;
 
                   return (
                     <TableRow key={r.id}>
@@ -228,12 +249,39 @@ export default async function QuarantineReviewPage({
                         )}
                       </TableCell>
                       <TableCell className="align-top text-xs text-slate-700">
+                        {c ? clientById.get(c.clientId) ?? "—" : "—"}
+                      </TableCell>
+                      <TableCell className="align-top text-xs text-slate-700">
                         {c?.company?.legalName ?? "—"}
                       </TableCell>
                       <TableCell className="align-top">
-                        <Badge className={getQuarantineReasonVariant(r.reasonCode)}>
-                          {r.reasonCode}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge className={getQuarantineReasonVariant(r.reasonCode)}>
+                            {r.reasonCode}
+                          </Badge>
+                          <Badge
+                            className={
+                              (r.approvalPath ?? "manual") === "auto"
+                                ? "border-transparent bg-emerald-100 text-emerald-800"
+                                : "border-transparent bg-amber-100 text-amber-800"
+                            }
+                          >
+                            {(r.approvalPath ?? "manual") === "auto" ? "Auto" : "Manual"}
+                          </Badge>
+                          {isEscalated ? (
+                            <span className="inline-flex items-center gap-1 text-rose-700">
+                              <AlertTriangle className="size-3.5" />
+                              <Badge className="border-transparent bg-rose-100 text-rose-800">
+                                Escalated
+                              </Badge>
+                            </span>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top text-xs">
+                        {r.previousGate && r.proposedRestoredGate
+                          ? `${r.previousGate} → ${r.proposedRestoredGate}`
+                          : "—"}
                       </TableCell>
                       <TableCell className="max-w-[220px] align-top text-xs text-slate-700">
                         {truncate(r.reasonDetail, 80)}
@@ -258,7 +306,7 @@ export default async function QuarantineReviewPage({
                                 : "—"}
                             </div>
                             {r.releaseReason ? (
-                              <div className="mt-1 text-[11px] italic">{r.releaseReason}</div>
+                              <div className="mt-1 text-[11px] italic">Approval: {r.releaseReason}</div>
                             ) : null}
                           </div>
                         ) : (
