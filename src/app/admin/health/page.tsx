@@ -172,6 +172,57 @@ async function runScenarios(): Promise<ScenarioResult[]> {
 
   const optOut = await db.suppression.count({ where: { isOptOut: true } });
 
+  const activeSuppressions = await db.suppression.count({
+    where: { releaseStatus: "active" },
+  });
+
+  const [allClients, clientsWithContacts] = await Promise.all([
+    db.client.count(),
+    db.client.count({
+      where: {
+        contacts: { some: {} },
+      },
+    }),
+  ]);
+
+  const [softMergedContacts, existingSurvivorContacts] = await Promise.all([
+    db.contact.findMany({
+      where: { mergedIntoId: { not: null } },
+      select: { mergedIntoId: true },
+    }),
+    db.contact.findMany({
+      where: { mergedIntoId: { not: null } },
+      select: { mergedIntoId: true },
+      distinct: ["mergedIntoId"],
+    }),
+  ]);
+  const survivorIds = existingSurvivorContacts
+    .map((row) => row.mergedIntoId)
+    .filter((id): id is string => Boolean(id));
+  const existingSurvivors = survivorIds.length
+    ? await db.contact.count({
+        where: { id: { in: survivorIds } },
+      })
+    : 0;
+  const totalSoftMerged = softMergedContacts.length;
+
+  const relationshipCount = await db.contactCompanyRelationship.count();
+
+  const nonGate0Contacts = await db.contact.findMany({
+    where: { gateStatus: { not: "gate_0" } },
+    select: { id: true },
+  });
+  const nonGate0Ids = nonGate0Contacts.map((row) => row.id);
+  const gateHistoryContactRows = nonGate0Ids.length
+    ? await db.gateStatusHistory.findMany({
+        where: { contactId: { in: nonGate0Ids } },
+        distinct: ["contactId"],
+        select: { contactId: true },
+      })
+    : [];
+  const historyContactIds = new Set(gateHistoryContactRows.map((row) => row.contactId));
+  const missingHistoryCount = nonGate0Ids.filter((id) => !historyContactIds.has(id)).length;
+
   return [
     {
       name: "Dedup-contact (ClientCo Tech, canonical LinkedIn URLs)",
@@ -221,6 +272,42 @@ async function runScenarios(): Promise<ScenarioResult[]> {
       actual: optOut,
       pass: optOut >= 1,
     },
+    {
+      name: "Tombstone integrity",
+      expected: "≥ 5",
+      actual: tombstones,
+      pass: tombstones >= 5,
+    },
+    {
+      name: "Suppression coverage",
+      expected: "≥ 11",
+      actual: activeSuppressions,
+      pass: activeSuppressions >= 11,
+    },
+    {
+      name: "Client isolation",
+      expected: `= ${allClients}`,
+      actual: clientsWithContacts,
+      pass: clientsWithContacts === allClients,
+    },
+    {
+      name: "Merge integrity",
+      expected: `= ${totalSoftMerged}`,
+      actual: totalSoftMerged === 0 ? 0 : existingSurvivors,
+      pass: totalSoftMerged === existingSurvivors,
+    },
+    {
+      name: "Relationships present",
+      expected: "≥ 50",
+      actual: relationshipCount,
+      pass: relationshipCount >= 50,
+    },
+    {
+      name: "Event-state consistency",
+      expected: "= 0",
+      actual: missingHistoryCount,
+      pass: missingHistoryCount === 0,
+    },
   ];
 }
 
@@ -267,7 +354,7 @@ export default async function HealthPage() {
           {allGreen ? "PASS" : "FAIL"}
         </Badge>
         <span className="text-sm text-slate-600">
-          Seed timestamp:{" "}
+          Last refresh:{" "}
           <span className="font-mono text-slate-800">
             {counts.seedTimestamp ? counts.seedTimestamp.toISOString() : "—"}
           </span>

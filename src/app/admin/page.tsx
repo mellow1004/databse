@@ -1,8 +1,13 @@
 import {
   AlertTriangle,
+  Clock3,
+  Database,
+  Megaphone,
+  ShieldCheck,
+  ShieldX,
   Award,
-  Lock,
   Radio,
+  RefreshCcw,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -117,11 +122,16 @@ async function latestAccuracyRate(provider: string): Promise<string | null> {
 }
 
 export default async function AdminDashboardPage() {
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 86_400_000);
+  const thirtyDaysFromNow = new Date(Date.now() + 30 * 86_400_000);
+
   const [
-    totalContacts,
-    gate2Ready,
-    pendingQuarantine,
-    pendingConflicts,
+    gate1Count,
+    gate2Count,
+    gate3Count,
+    campaignActiveCount,
+    staleDueForRefreshCount,
+    retentionDueCount,
     auditLogs,
     latestClient,
     tombstoneCount,
@@ -130,16 +140,35 @@ export default async function AdminDashboardPage() {
     cognismAccuracy,
     apolloAccuracy,
     dsarApproachingDeadline,
-    retentionApproachingCount,
     retentionRows,
     providerBudgetAlerts,
   ] = await Promise.all([
-    db.contact.count({ where: { mergedIntoId: null } }),
+    db.contact.count({
+      where: { gateStatus: "gate_1", mergedIntoId: null },
+    }),
     db.contact.count({
       where: { gateStatus: "gate_2", mergedIntoId: null },
     }),
-    db.quarantineLog.count({ where: { reviewState: "pending" } }),
-    db.enrichmentLog.count({ where: { status: "conflict_pending" } }),
+    db.contact.count({
+      where: { gateStatus: "gate_3", mergedIntoId: null },
+    }),
+    db.contact.count({
+      where: { campaignActive: true },
+    }),
+    db.contact.count({
+      where: {
+        gateStatus: "gate_2",
+        lastVerifiedAt: { lt: ninetyDaysAgo },
+      },
+    }),
+    db.contact.count({
+      where: {
+        OR: [
+          { retentionStatus: "approaching_review" },
+          { retentionReviewDueAt: { lt: thirtyDaysFromNow } },
+        ],
+      },
+    }),
     db.auditLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 10,
@@ -169,19 +198,11 @@ export default async function AdminDashboardPage() {
         deadlineAt: { lt: new Date(Date.now() + 7 * 86_400_000) },
       },
     }),
-    db.contact.count({
-      where: {
-        OR: [
-          { retentionStatus: "approaching_review" },
-          { retentionReviewDueAt: { lt: new Date(Date.now() + 30 * 86_400_000) } },
-        ],
-      },
-    }),
     db.contact.findMany({
       where: {
         OR: [
           { retentionStatus: "approaching_review" },
-          { retentionReviewDueAt: { lt: new Date(Date.now() + 30 * 86_400_000) } },
+          { retentionReviewDueAt: { lt: thirtyDaysFromNow } },
         ],
       },
       take: 12,
@@ -351,74 +372,71 @@ export default async function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Total contacts
-            </CardTitle>
-            <Users className="size-4 text-slate-400" aria-hidden />
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+            <CardTitle className="text-xs font-medium text-slate-600">Gate 1</CardTitle>
+            <ShieldX className="size-3.5 text-slate-400" aria-hidden />
           </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">{totalContacts}</p>
-            <p className="text-xs text-slate-500">Active in master DB</p>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-semibold tabular-nums">{gate1Count}</p>
+            <p className="text-[11px] text-slate-500">Initial trust gate</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Gate 2 ready
-            </CardTitle>
-            <Award className="size-4 text-slate-400" aria-hidden />
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+            <CardTitle className="text-xs font-medium text-slate-600">Gate 2</CardTitle>
+            <Award className="size-3.5 text-slate-400" aria-hidden />
           </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">{gate2Ready}</p>
-            <p className="text-xs text-slate-500">Campaign-ready trust floor</p>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-semibold tabular-nums">{gate2Count}</p>
+            <p className="text-[11px] text-slate-500">Trust floor reached</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Pending quarantine
-            </CardTitle>
-            <Lock className="size-4 text-slate-400" aria-hidden />
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+            <CardTitle className="text-xs font-medium text-slate-600">Gate 3</CardTitle>
+            <ShieldCheck className="size-3.5 text-slate-400" aria-hidden />
           </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {pendingQuarantine}
-            </p>
-            <p className="text-xs text-slate-500">Awaiting Data Owner review</p>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-semibold tabular-nums">{gate3Count}</p>
+            <p className="text-[11px] text-slate-500">High-confidence tier</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Pending conflicts
-            </CardTitle>
-            <AlertTriangle className="size-4 text-slate-400" aria-hidden />
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+            <CardTitle className="text-xs font-medium text-slate-600">Campaign-active</CardTitle>
+            <Megaphone className="size-3.5 text-slate-400" aria-hidden />
           </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {pendingConflicts}
-            </p>
-            <p className="text-xs text-slate-500">
-              Enrichment conflicts flagged
-            </p>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-semibold tabular-nums">{campaignActiveCount}</p>
+            <p className="text-[11px] text-slate-500">Currently in campaigns</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-slate-600">
-              Approaching retention review
-            </CardTitle>
-            <Users className="size-4 text-slate-400" aria-hidden />
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+            <CardTitle className="text-xs font-medium text-slate-600">Stale due for refresh</CardTitle>
+            <RefreshCcw className="size-3.5 text-slate-400" aria-hidden />
           </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">{retentionApproachingCount}</p>
-            <p className="text-xs text-slate-500">Notification window: month 12 of 13.</p>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-semibold tabular-nums">{staleDueForRefreshCount}</p>
+            <p className="text-[11px] text-slate-500">Gate 2 older than 90d</p>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+            <CardTitle className="text-xs font-medium text-slate-600">Retention due</CardTitle>
+            <Clock3 className="size-3.5 text-slate-400" aria-hidden />
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-semibold tabular-nums">{retentionDueCount}</p>
+            <p className="text-[11px] text-slate-500">Approaching retention review</p>
           </CardContent>
         </Card>
       </div>
+      <p className="text-xs text-slate-500">
+        Gate 0 represents records below the trust floor (staging). The PRD&apos;s three-gate model applies to gates 1-3.
+      </p>
 
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="shadow-sm lg:col-span-3">
@@ -449,7 +467,7 @@ export default async function AdminDashboardPage() {
           <CardContent className="space-y-4 text-sm">
             <div className="flex flex-col gap-0.5 border-b border-slate-100 pb-3">
               <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Latest seed run
+                Last refresh
               </span>
               <span className="text-slate-900">
                 {formatDateTime(latestClient?.createdAt ?? null)}
