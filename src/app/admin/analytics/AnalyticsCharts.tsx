@@ -36,10 +36,12 @@ import type {
   VerificationDayRow,
 } from "@/lib/analytics-chart-types";
 
+const CHART_PALETTE = ["#2563eb", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4"];
+
 const GATE_HEX: Record<string, string> = {
   gate_0: "#94a3b8",
-  gate_1: "#3b82f6",
-  gate_2: "#22c55e",
+  gate_1: "#2563eb",
+  gate_2: "#10b981",
   gate_3: "#8b5cf6",
 };
 
@@ -51,19 +53,21 @@ const gateChartConfig = {
 } satisfies ChartConfig;
 
 const trendChartConfig = {
-  cognism: { label: "Cognism", color: "#3b82f6" },
-  apollo: { label: "Apollo", color: "#8b5cf6" },
+  cognism: { label: "Cognism", color: CHART_PALETTE[0] },
+  apollo: { label: "Apollo", color: CHART_PALETTE[3] },
 } satisfies ChartConfig;
 
 const verificationChartConfig = {
-  valid: { label: "Valid", color: "#22c55e" },
-  invalid: { label: "Invalid", color: "#f43f5e" },
+  valid: { label: "Valid", color: "#10b981" },
+  invalid: { label: "Invalid", color: "#ef4444" },
   risky: { label: "Risky", color: "#f59e0b" },
   unknown: { label: "Other", color: "#94a3b8" },
+  catch_all: { label: "Catch-all", color: "#cbd5e1" },
+  disposable: { label: "Disposable", color: "#cbd5e1" },
 } satisfies ChartConfig;
 
 const suppressionChartConfig = {
-  total: { label: "Cumulative", color: "#64748b" },
+  total: { label: "Cumulative", color: "#475569" },
 } satisfies ChartConfig;
 
 type Props = {
@@ -184,9 +188,9 @@ export function AnalyticsCharts({
                 />
                 <ReferenceLine
                   y={75}
-                  stroke="#f43f5e"
+                  stroke="#ef4444"
                   strokeDasharray="5 5"
-                  label={{ value: "75%", position: "right", fill: "#f43f5e", fontSize: 11 }}
+                  label={{ value: "75%", position: "right", fill: "#ef4444", fontSize: 11 }}
                 />
                 <Line
                   type="monotone"
@@ -267,7 +271,7 @@ export function AnalyticsCharts({
                 name="total"
                 stroke="var(--color-total)"
                 fill="var(--color-total)"
-                fillOpacity={0.3}
+                fillOpacity={0.15}
                 strokeWidth={2}
               />
             </AreaChart>

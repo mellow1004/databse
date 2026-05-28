@@ -34,8 +34,10 @@ import {
 import { getStatusVariant } from "@/lib/badge-helpers";
 import type { BiasCategorySection } from "@/lib/bias-monitoring-types";
 
+const CHART_PALETTE = ["#2563eb", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4"];
+
 const chartConfig = {
-  rate: { label: "Gate 2 rate", color: "#22c55e" },
+  rate: { label: "Gate 2 rate", color: CHART_PALETTE[0] },
 } satisfies ChartConfig;
 
 type Props = {

@@ -10,7 +10,7 @@ const TOLERANCE_PP = 10;
 
 const HEADCOUNT_ORDER = ["1-10", "11-50", "51-200", "201-1000", "1000+"] as const;
 
-const BAR_IN_TOLERANCE = "#22c55e";
+const BAR_IN_TOLERANCE = "#2563eb";
 const BAR_FLAGGED = "#f59e0b";
 
 type ContactRow = {
