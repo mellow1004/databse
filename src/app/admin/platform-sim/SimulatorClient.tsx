@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronDown,
@@ -658,6 +659,11 @@ export function SimulatorClient({
                       <TableRow key={row.id}>
                         <TableCell>
                           <div className="font-medium">{row.fullName}</div>
+                              <div>
+                                <Link href={`/admin/contacts/${row.id}`} className="text-xs underline underline-offset-4">
+                                  Open contact
+                                </Link>
+                              </div>
                           <div className="text-xs text-muted-foreground break-all">
                             {row.email ?? "—"}
                           </div>
@@ -748,7 +754,15 @@ export function SimulatorClient({
                       {formatRelativeTime(ev.createdAt)}
                     </span>
                   </div>
-                  <p className="mt-2 text-slate-800">{ev.resourceLabel}</p>
+                  <p className="mt-2 text-slate-800">
+                    {ev.resourceId ? (
+                      <Link href={`/admin/contacts/${ev.resourceId}`} className="underline underline-offset-4">
+                        {ev.resourceLabel}
+                      </Link>
+                    ) : (
+                      ev.resourceLabel
+                    )}
+                  </p>
                   <details className="mt-2">
                     <summary className="cursor-pointer text-xs font-medium text-primary">
                       View details

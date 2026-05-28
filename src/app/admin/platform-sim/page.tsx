@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/db";
 import type { ActiveCampaignRow, RecentSimulatorEvent } from "./types";
 import { SimulatorClient } from "./SimulatorClient";
@@ -178,6 +179,31 @@ export default async function PlatformSimPage({
           an external system.
         </AlertDescription>
       </Alert>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Read/Write contract</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">Reads</p>
+            <ul className="space-y-1 text-sm text-slate-600">
+              <li><code>GET /api/ai-sdr/targeting</code> (gate_2 + suppression filter)</li>
+              <li><code>GET /api/contacts/[id]</code> (contact details)</li>
+              <li><code>GET /api/contacts/[id]#gate-status</code></li>
+              <li><code>GET /api/suppressions</code></li>
+            </ul>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-slate-700">Writes</p>
+            <ul className="space-y-1 text-sm text-slate-600">
+              <li><code>POST /api/ai-sdr/campaign</code> (campaign assignments)</li>
+              <li><code>POST /api/ai-sdr/bounce</code> (bounce events)</li>
+              <li><code>POST /api/ai-sdr/reply</code> (reply events)</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
 
       <Suspense
         fallback={

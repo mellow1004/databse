@@ -352,21 +352,18 @@ export default async function AdminDashboardPage() {
         </Alert>
       ) : null}
 
-      <Card className="border-primary/20 bg-primary/5 shadow-sm">
+      <Card className="border-dashed bg-slate-50 shadow-sm">
         <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <Radio className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+            <Radio className="mt-0.5 size-4 shrink-0 text-slate-500" aria-hidden />
             <div>
-              <p className="text-sm font-medium text-slate-900">
-                New: AI SDR Platform Simulator
-              </p>
-              <p className="text-sm text-slate-600">
-                Demonstrate event-driven flows (targeting, campaign assignment, bounces,
-                replies) against the master database in real time.
+              <p className="text-sm font-medium text-slate-800">AI SDR Platform Simulator</p>
+              <p className="text-xs text-slate-600">
+                Demo tool for event-driven flows (targeting, assignment, bounces, replies).
               </p>
             </div>
           </div>
-          <Button variant="default" size="sm" className="shrink-0 sm:self-center" asChild>
+          <Button variant="outline" size="sm" className="shrink-0 sm:self-center" asChild>
             <Link href="/admin/platform-sim">Open simulator</Link>
           </Button>
         </CardContent>

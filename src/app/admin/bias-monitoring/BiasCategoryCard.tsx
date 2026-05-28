@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table";
 import { getStatusVariant } from "@/lib/badge-helpers";
 import type { BiasCategorySection } from "@/lib/bias-monitoring-types";
+import { InvestigationButton } from "./InvestigationButton";
 
 const CHART_PALETTE = ["#2563eb", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4"];
 
@@ -135,6 +136,7 @@ export function BiasCategoryCard({ section, overallRate }: Props) {
                   <TableHead className="text-right">Rate</TableHead>
                   <TableHead className="text-right">Delta from overall</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -153,6 +155,17 @@ export function BiasCategoryCard({ section, overallRate }: Props) {
                         <Badge className={getStatusVariant("valid")}>✓</Badge>
                       ) : (
                         <Badge className={getStatusVariant("risky")}>⚠ Flagged</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {r.inTolerance ? null : (
+                        <InvestigationButton
+                          category={section.id}
+                          subgroup={r.label}
+                          contacts={r.contacts}
+                          rate={r.gate2Rate}
+                          deltaPp={r.deltaPp}
+                        />
                       )}
                     </TableCell>
                   </TableRow>

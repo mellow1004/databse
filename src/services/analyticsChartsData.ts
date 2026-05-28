@@ -8,16 +8,27 @@ import { db } from "@/lib/db";
 import { computeAccuracyStats } from "@/services/accuracy";
 
 const GATE_ORDER = ["gate_0", "gate_1", "gate_2", "gate_3"] as const;
+export type AnalyticsFilterInput = {
+  clientId?: string;
+  provider?: string;
+  market?: string;
+  dateFrom?: Date;
+};
 
 function gateLabel(gate: string): string {
   if (gate === "gate_0") return "Staging / Below floor";
   return gate.replace(/_/g, " ");
 }
 
-export async function getGateDistribution(): Promise<GateDistributionRow[]> {
+export async function getGateDistribution(filters: AnalyticsFilterInput = {}): Promise<GateDistributionRow[]> {
   const grouped = await db.contact.groupBy({
     by: ["gateStatus"],
-    where: { mergedIntoId: null },
+    where: {
+      mergedIntoId: null,
+      ...(filters.clientId ? { clientId: filters.clientId } : {}),
+      ...(filters.market ? { market: filters.market } : {}),
+      ...(filters.dateFrom ? { updatedAt: { gte: filters.dateFrom } } : {}),
+    },
     _count: { _all: true },
   });
   const byStatus = new Map(grouped.map((g) => [g.gateStatus, g._count._all]));
@@ -51,27 +62,35 @@ async function lastReviewedCycles(provider: string, limit: number): Promise<numb
   return all.slice(-limit);
 }
 
-export async function getProviderTrendInsufficient(): Promise<{
+export async function getProviderTrendInsufficient(filters: AnalyticsFilterInput = {}): Promise<{
   insufficient: boolean;
   rows: ProviderTrendRow[];
 }> {
+  const providers = filters.provider ? [filters.provider] : ["cognism", "apollo"];
+  const [p1, p2] = providers.length === 1 ? [providers[0], providers[0]] : providers;
   const [cogCycles, apoCycles] = await Promise.all([
-    reviewedCycleNumbers("cognism"),
-    reviewedCycleNumbers("apollo"),
+    reviewedCycleNumbers(p1),
+    reviewedCycleNumbers(p2),
   ]);
   const insufficient = cogCycles.length < 2 || apoCycles.length < 2;
 
-  const lastCog = await lastReviewedCycles("cognism", 10);
-  const lastApo = await lastReviewedCycles("apollo", 10);
+  const lastCog = await lastReviewedCycles(p1, 10);
+  const lastApo = await lastReviewedCycles(p2, 10);
   const cycleSet = new Set<number>([...lastCog, ...lastApo]);
   const cycles = [...cycleSet].sort((a, b) => a - b);
 
   const rows: ProviderTrendRow[] = [];
   for (const cycle of cycles) {
     const [cogStats, apoStats] = await Promise.all([
-      computeAccuracyStats("cognism", cycle, undefined),
-      computeAccuracyStats("apollo", cycle, undefined),
+      computeAccuracyStats(p1, cycle, filters.clientId),
+      computeAccuracyStats(p2, cycle, filters.clientId),
     ]);
+    if (filters.dateFrom) {
+      const samplesSince = await db.accuracySample.count({
+        where: { provider: { in: [p1, p2] }, sampledAt: { gte: filters.dateFrom } },
+      });
+      if (samplesSince === 0) continue;
+    }
     rows.push({
       cycle,
       cognism: cogStats.accuracyRate,
@@ -99,11 +118,25 @@ function last30DayKeys(): string[] {
   return keys;
 }
 
-export async function getVerificationVolumeByDay(): Promise<VerificationDayRow[]> {
+export async function getVerificationVolumeByDay(filters: AnalyticsFilterInput = {}): Promise<VerificationDayRow[]> {
   const keys = last30DayKeys();
-  const since = new Date(keys[0]! + "T00:00:00");
+  const since = filters.dateFrom ?? new Date(keys[0]! + "T00:00:00");
+  const marketContactIds =
+    filters.market
+      ? (
+          await db.contact.findMany({
+            where: { market: filters.market, ...(filters.clientId ? { clientId: filters.clientId } : {}) },
+            select: { id: true },
+          })
+        ).map((c) => c.id)
+      : [];
   const rows = await db.verification.findMany({
-    where: { createdAt: { gte: since } },
+    where: {
+      createdAt: { gte: since },
+      ...(filters.clientId ? { clientId: filters.clientId } : {}),
+      ...(filters.provider ? { provider: filters.provider } : {}),
+      ...(filters.market ? { contactId: { in: marketContactIds } } : {}),
+    },
     select: { createdAt: true, status: true },
   });
 
@@ -138,10 +171,14 @@ export async function getVerificationVolumeByDay(): Promise<VerificationDayRow[]
 }
 
 /** Cumulative suppression records created on or before end of each day (monotone). */
-export async function getSuppressionCumulativeByDay(): Promise<SuppressionGrowthRow[]> {
+export async function getSuppressionCumulativeByDay(filters: AnalyticsFilterInput = {}): Promise<SuppressionGrowthRow[]> {
   const keys = last30DayKeys();
   const times = (
     await db.suppression.findMany({
+      where: {
+        ...(filters.clientId ? { OR: [{ clientId: filters.clientId }, { clientId: null }] } : {}),
+        ...(filters.dateFrom ? { createdAt: { gte: filters.dateFrom } } : {}),
+      },
       select: { createdAt: true },
     })
   )
