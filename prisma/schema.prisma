@@ -124,7 +124,9 @@ model Contact {
   gateStatus       String  @default("gate_0") // "gate_0" | "gate_1" | "gate_2" | "gate_3"
   campaignActive   Boolean @default(false) // runtime flag written by AI SDR platform
   quarantineReason String? // null if not quarantined
-  lifecycleStage   String  @default("active") // "active" | "frozen" | "anonymised" | "legal_hold"
+  lifecycleStage   String  @default("active") // "active" | "dormant" | "frozen" | "anonymised" | "legal_hold"
+  lastCampaignAt   DateTime? // for dormant detection (180-day enrichment cadence)
+  hardBounceCount30d Int     @default(0) // rolling 30-day hard bounce count for P1 #17 escalation
   // Lawful basis & processing purpose (P0 #3 — GDPR Article 6 visibility)
   lawfulBasis          String? // "legitimate_interest" | "consent" | "contract" | "legal_obligation"
   processingPurpose    String? // "b2b_prospecting" | "campaign_execution" | "analytics"
@@ -523,6 +525,77 @@ model BulkActionApproval {
   @@index([requestedBy])
   @@index([actionType])
   @@map("bulk_action_approvals")
+}
+
+model BatchSnapshot {
+  id            String   @id @default(cuid())
+  batchId       String // matches the batchId in enrichment_log, refresh_log, etc.
+  batchType     String // "enrichment" | "refresh_cycle" | "import_promotion" | "merge" | "bulk_suppression"
+  recordType    String // "contact" | "company"
+  recordId      String
+  preWriteState String // JSON snapshot of the record's fields before the write
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime // 30 days from creation
+
+  @@index([batchId])
+  @@index([recordId])
+  @@index([expiresAt])
+  @@map("batch_snapshots")
+}
+
+model ProviderBudget {
+  id             String   @id @default(cuid())
+  provider       String
+  clientId       String? // null = global budget
+  periodType     String // "daily" | "monthly"
+  periodStart    DateTime
+  periodEnd      DateTime
+  budgetEur      Float
+  spentEur       Float    @default(0)
+  creditsUsed    Int      @default(0)
+  alertThreshold Float    @default(0.75) // alert at 75% utilisation
+  alertedAt      DateTime? // populated when threshold first crossed
+  status         String   @default("active") // "active" | "exhausted" | "paused"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([provider, clientId, periodType, periodStart])
+  @@index([periodStart, periodEnd])
+  @@map("provider_budgets")
+}
+
+model SuppressionImportBatch {
+  id           String   @id @default(cuid())
+  clientId     String?
+  listType     String // "client_dnc" | "opt_out_register" | "competitor_list" | "domain_blocklist" | "provider_signal"
+  fileName     String
+  uploadedBy   String
+  rowsTotal    Int      @default(0)
+  rowsImported Int      @default(0)
+  rowsRejected Int      @default(0)
+  status       String   @default("pending") // "pending" | "completed" | "failed"
+  notes        String?
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  @@index([clientId])
+  @@index([status])
+  @@map("suppression_import_batches")
+}
+
+model BounceEvent {
+  id                     String   @id @default(cuid())
+  contactId              String
+  bounceType             String // "hard" | "soft" | "block"
+  reason                 String?
+  source                 String // "ai_sdr_platform" | "verification" | "manual"
+  occurredAt             DateTime @default(now())
+  escalatedToSuppression Boolean   @default(false)
+  escalatedSuppressionId String?
+
+  @@index([contactId, occurredAt])
+  @@index([bounceType, occurredAt])
+  @@map("bounce_events")
 }
 
 /// Hashed identifiers of hard-deleted records (GDPR Article 17).

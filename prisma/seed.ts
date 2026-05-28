@@ -53,6 +53,21 @@ function shouldApproachRetentionReview(seedKey: string): boolean {
   return bucket < 5;
 }
 
+function lifecycleStageFromSeed(seedKey: string): {
+  lifecycleStage: "active" | "dormant" | "frozen";
+  lastCampaignAt: Date | null;
+} {
+  const hashPrefix = sha256Hex(seedKey).slice(0, 8);
+  const bucket = Number.parseInt(hashPrefix, 16) % 100;
+  if (bucket < 10) {
+    return { lifecycleStage: "dormant", lastCampaignAt: daysAgo(120) };
+  }
+  if (bucket < 15) {
+    return { lifecycleStage: "frozen", lastCampaignAt: daysAgo(250) };
+  }
+  return { lifecycleStage: "active", lastCampaignAt: null };
+}
+
 // ============================================================
 // Constants
 // ============================================================
@@ -396,6 +411,7 @@ async function seedPersonsAndContacts(client: SeededClient, companies: SeededCom
     id: string; clientId: string; personId: string; companyId: string;
     email: string | null; phone: string | null; title: string; seniority: string;
     gateStatus: string; campaignActive: boolean; quarantineReason: string | null; lifecycleStage: string;
+    lastCampaignAt: Date | null; hardBounceCount30d: number;
     lawfulBasis: string; processingPurpose: string; liaStatus: string; liaCompletedAt: Date;
     sensitivityTier: string; market: string; retentionStatus: string; retentionReviewDueAt: Date | null;
     freshnessLabel: string | null; lastVerifiedAt: Date | null; lastEnrichedAt: Date | null; derivedFieldVersion: string | null;
@@ -420,6 +436,7 @@ async function seedPersonsAndContacts(client: SeededClient, companies: SeededCom
     const market = marketFromCountry(company.country ?? null);
     const contactId = newId();
     const retentionReviewFlag = shouldApproachRetentionReview(`${client.id}:${contactId}`);
+    const lifecycle = lifecycleStageFromSeed(`${client.id}:${contactId}:lifecycle`);
 
     // Gate distribution: ~50% gate_0, ~30% gate_1, ~20% gate_2
     const gateRoll = faker.number.float({ min: 0, max: 1 });
@@ -448,7 +465,9 @@ async function seedPersonsAndContacts(client: SeededClient, companies: SeededCom
       gateStatus,
       campaignActive: faker.number.float({ min: 0, max: 1 }) < 0.05,
       quarantineReason: null,
-      lifecycleStage: "active",
+      lifecycleStage: lifecycle.lifecycleStage,
+      lastCampaignAt: lifecycle.lastCampaignAt,
+      hardBounceCount30d: 0,
       lawfulBasis: "legitimate_interest",
       processingPurpose: "b2b_prospecting",
       liaStatus: "documented",
