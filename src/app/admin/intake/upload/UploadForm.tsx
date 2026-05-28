@@ -20,6 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  CANONICAL_CSV_FIELDS,
+  detectHeaderMappings,
+  type HeaderMappingOverride,
+} from "@/lib/csv-parser";
 
 type Client = { id: string; name: string };
 
@@ -48,6 +53,17 @@ type ApiError = {
   details?: string[];
 };
 
+type PrecheckResponse = {
+  counts: {
+    would_be_accepted: number;
+    would_be_rejected_tombstone: number;
+    would_be_rejected_duplicate_in_batch: number;
+    would_be_rejected_validation: number;
+    would_be_rejected_existing_master_duplicate: number;
+  };
+  totalRows: number;
+};
+
 function fileSummary(file: File): string {
   const kb = (file.size / 1024).toFixed(1);
   return `${file.name} (${kb} KB)`;
@@ -61,9 +77,79 @@ export default function UploadForm({ clients }: UploadFormProps) {
     useState<(typeof SOURCE_OPTIONS)[number]["value"]>("crm_export");
   const [sourceDetail, setSourceDetail] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [detectedHeaders, setDetectedHeaders] = useState<string[]>([]);
+  const [headerMappings, setHeaderMappings] = useState<HeaderMappingOverride>({});
+  const [mappingConfirmed, setMappingConfirmed] = useState(false);
+  const [precheck, setPrecheck] = useState<PrecheckResponse | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [prechecking, setPrechecking] = useState(false);
   const [success, setSuccess] = useState<ApiSuccess | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+
+  async function onFileSelected(next: File | null) {
+    setFile(next);
+    setDetectedHeaders([]);
+    setHeaderMappings({});
+    setMappingConfirmed(false);
+    setPrecheck(null);
+    setSuccess(null);
+    setError(null);
+    if (!next) return;
+    try {
+      const text = await next.text();
+      const firstLine = text.split(/\r?\n/)[0] ?? "";
+      const headers = firstLine
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean);
+      const mapping = detectHeaderMappings(headers);
+      setDetectedHeaders(headers);
+      setHeaderMappings(mapping);
+    } catch (err) {
+      setError({
+        error: "mapping_preview_failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function runPrecheck() {
+    setError(null);
+    setPrecheck(null);
+    if (!clientId) {
+      setError({ error: "client_missing", message: "Please choose a client." });
+      return;
+    }
+    if (!file) {
+      setError({ error: "file_missing", message: "Please choose a CSV file." });
+      return;
+    }
+    setPrechecking(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("clientId", clientId);
+      formData.append("mappings", JSON.stringify(headerMappings));
+      const res = await fetch("/api/intake/upload/precheck", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data as ApiError);
+        return;
+      }
+      setPrecheck(data as PrecheckResponse);
+      setMappingConfirmed(true);
+    } catch (err) {
+      setError({
+        error: "precheck_failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setPrechecking(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +175,7 @@ export default function UploadForm({ clients }: UploadFormProps) {
 
     setSubmitting(true);
     try {
+      formData.append("mappings", JSON.stringify(headerMappings));
       const res = await fetch("/api/intake/upload", {
         method: "POST",
         body: formData,
@@ -132,7 +219,11 @@ export default function UploadForm({ clients }: UploadFormProps) {
             <Label htmlFor="clientId">Client</Label>
             <Select
               value={clientId}
-              onValueChange={setClientId}
+              onValueChange={(v) => {
+                setClientId(v);
+                setMappingConfirmed(false);
+                setPrecheck(null);
+              }}
               disabled={submitting || clients.length === 0}
             >
               <SelectTrigger id="clientId" className="w-full">
@@ -152,9 +243,11 @@ export default function UploadForm({ clients }: UploadFormProps) {
             <Label htmlFor="source">Source</Label>
             <Select
               value={source}
-              onValueChange={(v) =>
-                setSource(v as (typeof SOURCE_OPTIONS)[number]["value"])
-              }
+              onValueChange={(v) => {
+                setSource(v as (typeof SOURCE_OPTIONS)[number]["value"]);
+                setMappingConfirmed(false);
+                setPrecheck(null);
+              }}
               disabled={submitting}
             >
               <SelectTrigger id="source" className="w-full">
@@ -191,7 +284,10 @@ export default function UploadForm({ clients }: UploadFormProps) {
               id="file"
               type="file"
               accept=".csv,text/csv"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const target = e.target as HTMLInputElement;
+                void onFileSelected(target.files?.[0] ?? null);
+              }}
               disabled={submitting}
               className="cursor-pointer"
             />
@@ -209,9 +305,84 @@ export default function UploadForm({ clients }: UploadFormProps) {
             </a>
           </div>
 
+          {detectedHeaders.length > 0 ? (
+            <Card className="border-dashed">
+              <CardHeader>
+                <CardTitle className="text-base">Field mapping preview</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {detectedHeaders.map((header) => (
+                  <div key={header} className="grid items-center gap-2 md:grid-cols-2">
+                    <p className="font-mono text-xs text-slate-700">{header}</p>
+                    <Select
+                      value={headerMappings[header] ?? "__ignore"}
+                      onValueChange={(v) => {
+                        setHeaderMappings((prev) => ({
+                          ...prev,
+                          [header]: v as HeaderMappingOverride[string],
+                        }));
+                        setMappingConfirmed(false);
+                        setPrecheck(null);
+                      }}
+                      disabled={submitting || prechecking}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__ignore">Ignore column</SelectItem>
+                        {CANONICAL_CSV_FIELDS.map((field) => (
+                          <SelectItem key={field} value={field}>
+                            {field}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {!mappingConfirmed ? (
+            <Button
+              type="button"
+              disabled={prechecking || submitting || clients.length === 0 || !file}
+              className="gap-2"
+              onClick={runPrecheck}
+            >
+              {prechecking ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+              {prechecking ? "Running pre-check…" : "Confirm mapping and run pre-check"}
+            </Button>
+          ) : null}
+
+          {precheck ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Pre-check report</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <p>Total rows: {precheck.totalRows}</p>
+                <p>would_be_accepted: {precheck.counts.would_be_accepted}</p>
+                <p>would_be_rejected_tombstone: {precheck.counts.would_be_rejected_tombstone}</p>
+                <p>would_be_rejected_duplicate_in_batch: {precheck.counts.would_be_rejected_duplicate_in_batch}</p>
+                <p>would_be_rejected_validation: {precheck.counts.would_be_rejected_validation}</p>
+                <p>
+                  would_be_rejected_existing_master_duplicate:{" "}
+                  {precheck.counts.would_be_rejected_existing_master_duplicate}
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Button
             type="submit"
-            disabled={submitting || clients.length === 0}
+            disabled={
+              submitting ||
+              clients.length === 0 ||
+              !mappingConfirmed ||
+              precheck == null
+            }
             className="gap-2"
           >
             {submitting ? (
@@ -219,7 +390,7 @@ export default function UploadForm({ clients }: UploadFormProps) {
             ) : (
               <Upload className="size-4" aria-hidden />
             )}
-            {submitting ? "Uploading…" : "Upload and stage"}
+            {submitting ? "Uploading…" : "Proceed with import"}
           </Button>
 
           {error && (

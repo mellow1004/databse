@@ -70,7 +70,8 @@ export async function POST(req: NextRequest) {
       actorUserId: dataOwner.id,
     });
 
-    return NextResponse.json(output);
+    const rollbackBatchId = `merge:${survivorId}:${mergedFromId}`;
+    return NextResponse.json({ ...output, rollbackBatchId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/dedup/merge]", err);

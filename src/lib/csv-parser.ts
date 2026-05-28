@@ -18,7 +18,7 @@ import {
 // of "Email Address" / "Email_Address" / "email address" variants.
 // ----------------------------------------------------------------------------
 
-const HEADER_ALIASES: Record<string, keyof ParsedCsvRow["candidate"]> = {
+export const HEADER_ALIASES: Record<string, keyof ParsedCsvRow["candidate"]> = {
   // email
   email: "email",
   email_address: "email",
@@ -67,8 +67,37 @@ const HEADER_ALIASES: Record<string, keyof ParsedCsvRow["candidate"]> = {
   country_code: "country",
 };
 
+export const CANONICAL_CSV_FIELDS = [
+  "email",
+  "linkedinUrl",
+  "phone",
+  "fullName",
+  "firstName",
+  "lastName",
+  "title",
+  "companyName",
+  "domain",
+  "country",
+] as const satisfies ReadonlyArray<keyof ParsedCsvRow["candidate"]>;
+
 function canonicaliseHeader(header: string): string {
   return header.toLowerCase().trim().replace(/\s+/g, "_");
+}
+
+export type HeaderMappingOverride = Record<
+  string,
+  keyof ParsedCsvRow["candidate"] | "__ignore"
+>;
+
+export function detectHeaderMappings(
+  headers: string[],
+): Record<string, keyof ParsedCsvRow["candidate"] | "__ignore"> {
+  const out: Record<string, keyof ParsedCsvRow["candidate"] | "__ignore"> = {};
+  for (const h of headers) {
+    const key = canonicaliseHeader(h);
+    out[h] = HEADER_ALIASES[key] ?? "__ignore";
+  }
+  return out;
 }
 
 // ----------------------------------------------------------------------------
@@ -132,7 +161,10 @@ function validateCandidate(candidate: ParsedCsvRow["candidate"]): string[] {
 // Main entry point
 // ----------------------------------------------------------------------------
 
-export function parseCsv(csvText: string): ParseResult {
+export function parseCsv(
+  csvText: string,
+  mappingOverrides?: HeaderMappingOverride,
+): ParseResult {
   // Early bail: completely empty input is unambiguous.
   if (!csvText || csvText.trim() === "") {
     return {
@@ -177,8 +209,11 @@ export function parseCsv(csvText: string): ParseResult {
   // Build header → canonical field map by walking the headers we recognise.
   const headerToField = new Map<string, keyof ParsedCsvRow["candidate"]>();
   for (const h of originalHeaders) {
-    const key = canonicaliseHeader(h);
-    const field = HEADER_ALIASES[key];
+    const fromOverride = mappingOverrides?.[h];
+    const field =
+      fromOverride && fromOverride !== "__ignore"
+        ? fromOverride
+        : HEADER_ALIASES[canonicaliseHeader(h)];
     if (field) headerToField.set(h, field);
   }
 

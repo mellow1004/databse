@@ -79,7 +79,10 @@ export default function ConflictCard({
           Pending conflict · <code className="font-mono text-sm">{field}</code>
         </CardTitle>
         <p className="text-xs text-amber-800">
-          Δ confidence = {(delta * 100).toFixed(1)}%
+          Δ {(delta * 100).toFixed(1)}%{" "}
+          {delta < 0.15
+            ? "(below 15% threshold — manual review required)"
+            : "(above 15% threshold — precedence can auto-resolve)"}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -85,7 +85,7 @@ export default async function BatchDetailPage({
     db.auditLog.findFirst({
       where: { resourceId: id, action: "batch_promoted" },
       orderBy: { createdAt: "desc" },
-      select: { afterState: true },
+      select: { afterState: true, createdAt: true },
     }),
     db.auditLog.findFirst({
       where: { resourceId: id, action: "pipeline_completed" },
@@ -160,6 +160,9 @@ export default async function BatchDetailPage({
   const rejectionEntries = Object.entries(rejectionCounts).sort(
     (a, b) => b[1] - a[1],
   );
+  const isRollbackEligible =
+    !!latestPromotedAudit &&
+    Date.now() - latestPromotedAudit.createdAt.getTime() <= 30 * 86_400_000;
 
   return (
     <div className="space-y-6">
@@ -168,11 +171,16 @@ export default async function BatchDetailPage({
           <div className="space-y-1">
             <CardTitle className="text-xl">{batch.fileName}</CardTitle>
             <p className="text-xs text-muted-foreground">
-              {(batch.fileSizeBytes / 1024).toFixed(1)} KB · Batch{" "}
-              <code className="font-mono">{batch.id}</code>
+              {(batch.fileSizeBytes / 1024).toFixed(1)} KB
+            </p>
+            <p className="text-sm font-medium text-slate-900">
+              batch_id: <code className="font-mono">{batch.id}</code>
             </p>
           </div>
-          <Badge className={getStatusVariant(batch.status)}>{batch.status}</Badge>
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-slate-500">Processing stage</span>
+            <Badge className={getStatusVariant(batch.status)}>{batch.status}</Badge>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-4">
@@ -227,6 +235,13 @@ export default async function BatchDetailPage({
             <p className="text-xs text-muted-foreground">
               Source detail: {batch.sourceDetail}
             </p>
+          ) : null}
+          {isRollbackEligible ? (
+            <Button variant="link" asChild className="h-auto px-0 text-sm">
+              <Link href={`/admin/rollback?batchId=${encodeURIComponent(batch.id)}`}>
+                View rollback eligibility →
+              </Link>
+            </Button>
           ) : null}
         </CardContent>
       </Card>

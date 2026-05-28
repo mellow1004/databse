@@ -16,9 +16,18 @@ function relative(d: Date): string {
   return `${Math.round(hr / 24)}d ago`;
 }
 
-export default async function RollbackPage() {
+export default async function RollbackPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ batchId?: string }>;
+}) {
+  const sp = await searchParams;
+  const batchIdFilter = (sp.batchId ?? "").trim();
   const snapshots = await db.batchSnapshot.findMany({
-    where: { expiresAt: { gt: new Date() } },
+    where: {
+      expiresAt: { gt: new Date() },
+      ...(batchIdFilter ? { batchId: batchIdFilter } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take: 500,
     select: {

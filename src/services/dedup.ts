@@ -51,6 +51,8 @@ export type FieldComparison = {
   field: string;
   survivorValue: string | null;
   mergedFromValue: string | null;
+  source?: string;
+  verified?: string;
 };
 
 export type DedupCandidate = {
@@ -61,6 +63,11 @@ export type DedupCandidate = {
   confidence: number;
   matchReason: string;
   fieldComparison: FieldComparison[];
+  entityIds?: {
+    personId: string | null;
+    contactId: string | null;
+    companyId: string | null;
+  };
 };
 
 // ============================================================
@@ -246,6 +253,11 @@ export async function findContactDuplicates(clientId: string): Promise<DedupCand
       confidence,
       matchReason: reason,
       fieldComparison: buildContactFieldComparison(survivor, mergedFrom),
+      entityIds: {
+        personId: survivor.personId,
+        contactId: survivor.id,
+        companyId: survivor.companyId,
+      },
     });
   }
 
@@ -382,6 +394,11 @@ export async function findCompanyDuplicates(clientId: string): Promise<DedupCand
         contactCountByCompany,
         aliasCountByCompany,
       ),
+      entityIds: {
+        personId: null,
+        contactId: null,
+        companyId: survivor.id,
+      },
     });
   }
 

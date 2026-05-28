@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { parseCsv } from "@/lib/csv-parser";
+import { parseCsv, type HeaderMappingOverride } from "@/lib/csv-parser";
 import { intake, type ImportSource } from "@/services/intake";
 
 /**
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     const clientId = form.get("clientId");
     const source = form.get("source");
     const sourceDetail = form.get("sourceDetail");
+    const mappingsRaw = form.get("mappings");
 
     // ---- Field-level validation ----
     if (!(file instanceof File)) {
@@ -108,7 +109,18 @@ export async function POST(req: NextRequest) {
 
     // ---- Parse ----
     const csvText = await file.text();
-    const parseResult = parseCsv(csvText);
+    let mappings: HeaderMappingOverride | undefined = undefined;
+    if (typeof mappingsRaw === "string" && mappingsRaw.trim()) {
+      try {
+        mappings = JSON.parse(mappingsRaw) as HeaderMappingOverride;
+      } catch {
+        return NextResponse.json(
+          { error: "mappings_invalid", message: "mappings must be valid JSON." },
+          { status: 400 },
+        );
+      }
+    }
+    const parseResult = parseCsv(csvText, mappings);
 
     if (parseResult.fileLevelErrors.length > 0) {
       // File-level errors mean no batch is created — nothing usable to stage.

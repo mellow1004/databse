@@ -53,6 +53,14 @@ type Props = {
   currentType: FilterType;
 };
 
+function shortId(id: string): string {
+  return id.slice(-8);
+}
+
+function maybeShort(id: string | null | undefined): string {
+  return id ? shortId(id) : "—";
+}
+
 export default function DedupReviewer({
   candidates,
   clients,
@@ -195,7 +203,6 @@ export default function DedupReviewer({
             candidate={c}
             onMerged={() => {
               setRemovedKeys((prev) => new Set(prev).add(keyOf(c)));
-              toast.success("Merged. View in audit log.");
               router.refresh();
             }}
             onDismissed={() => {
@@ -217,6 +224,7 @@ function CandidateCard({
   onMerged: () => void;
   onDismissed: () => void;
 }) {
+  const router = useRouter();
   const overrideable =
     candidate.type === "contact"
       ? CONTACT_OVERRIDEABLE_FIELDS
@@ -256,6 +264,17 @@ function CandidateCard({
       if (!res.ok) {
         setError(data.message || data.error || `HTTP ${res.status}`);
       } else {
+        const rollbackBatchId = data.rollbackBatchId as string | undefined;
+        if (rollbackBatchId) {
+          toast.success("Merge complete.", {
+            action: {
+              label: "Undo →",
+              onClick: () => router.push(`/admin/rollback?batchId=${encodeURIComponent(rollbackBatchId)}`),
+            },
+          });
+        } else {
+          toast.success("Merge complete.");
+        }
         onMerged();
       }
     } catch (err) {
@@ -309,6 +328,8 @@ function CandidateCard({
               <TableHead className="w-32">Field</TableHead>
               <TableHead>Survivor</TableHead>
               <TableHead>Merged from</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Verified</TableHead>
               <TableHead className="w-56">Take from →</TableHead>
             </TableRow>
           </TableHeader>
@@ -332,6 +353,12 @@ function CandidateCard({
                   </TableCell>
                   <TableCell className={taking ? "font-medium" : ""}>
                     {fmt(fc.mergedFromValue)}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {fc.source ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {fc.verified ?? "—"}
                   </TableCell>
                   <TableCell>
                     {disabled ? (
@@ -402,6 +429,9 @@ function CandidateCard({
             <span className="text-sm text-destructive">Error: {error}</span>
           ) : null}
         </div>
+        <p className="text-xs text-muted-foreground">
+          person_id: {maybeShort(candidate.entityIds?.personId)} · contact_id: {maybeShort(candidate.entityIds?.contactId)} · company_id: {maybeShort(candidate.entityIds?.companyId)}
+        </p>
       </CardContent>
     </Card>
   );
