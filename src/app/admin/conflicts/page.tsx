@@ -86,7 +86,7 @@ export default async function ConflictsQueuePage({
         where: { id: { in: contactIds } },
         include: {
           person: { select: { fullName: true, primaryEmail: true } },
-          company: { select: { legalName: true } },
+          company: { select: { id: true, legalName: true } },
         },
       })
     : [];
@@ -166,7 +166,15 @@ export default async function ConflictsQueuePage({
                           name
                         )}
                       </TableCell>
-                      <TableCell className="text-slate-700">{company}</TableCell>
+                      <TableCell className="text-slate-700">
+                        {c?.company ? (
+                          <Link href={`/admin/companies/${c.company.id}`} className="underline underline-offset-4 hover:underline">
+                            {company}
+                          </Link>
+                        ) : (
+                          company
+                        )}
+                      </TableCell>
                       <TableCell>
                         <code className="font-mono text-xs">{field}</code>
                       </TableCell>

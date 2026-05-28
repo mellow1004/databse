@@ -1,6 +1,7 @@
 "use client";
 
 import { UserX } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -276,6 +277,30 @@ function CandidateCard({
           </Badge>
         </div>
         <p className="text-sm italic text-muted-foreground">{candidate.matchReason}</p>
+        <p className="w-full text-xs text-muted-foreground">
+          Survivor:{" "}
+          <Link
+            href={
+              candidate.type === "company"
+                ? `/admin/companies/${candidate.survivorId}`
+                : `/admin/contacts/${candidate.survivorId}`
+            }
+            className="underline underline-offset-4"
+          >
+            ...{candidate.survivorId.slice(-8)}
+          </Link>{" "}
+          · Merged from:{" "}
+          <Link
+            href={
+              candidate.type === "company"
+                ? `/admin/companies/${candidate.mergedFromId}`
+                : `/admin/contacts/${candidate.mergedFromId}`
+            }
+            className="underline underline-offset-4"
+          >
+            ...{candidate.mergedFromId.slice(-8)}
+          </Link>
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         <Table>

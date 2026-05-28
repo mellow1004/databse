@@ -22,7 +22,7 @@ function resourceHref(resourceType: string, resourceId: string | null): string |
   if (resourceType === "refresh_log") return "/admin/refresh-cycle";
   if (resourceType === "quarantine_log") return "/admin/quarantine";
   if (resourceType === "suppression") return "/admin/suppressions";
-  if (resourceType === "company") return "/admin/dedup";
+  if (resourceType === "company") return `/admin/companies/${resourceId}`;
   return null;
 }
 

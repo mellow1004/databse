@@ -162,7 +162,7 @@ export default async function ContactDetailPage({
   });
   if (!contact) notFound();
 
-  const [verifications, enrichmentLogs, gateHistory, survivor] = await Promise.all([
+  const [verifications, enrichmentLogs, gateHistory, survivor, otherRoles, activeCampaignRoles] = await Promise.all([
     db.verification.findMany({
       where: { contactId: id },
       orderBy: { createdAt: "desc" },
@@ -184,6 +184,32 @@ export default async function ContactDetailPage({
           include: { person: { select: { fullName: true } } },
         })
       : null,
+    db.contact.findMany({
+      where: {
+        personId: contact.personId,
+        id: { not: contact.id },
+        mergedIntoId: null,
+      },
+      include: {
+        company: { select: { id: true, legalName: true } },
+        client: { select: { id: true, name: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+    }),
+    db.contact.findMany({
+      where: {
+        personId: contact.personId,
+        campaignActive: true,
+        mergedIntoId: null,
+      },
+      include: {
+        company: { select: { id: true, legalName: true } },
+        client: { select: { id: true, name: true } },
+      },
+      orderBy: [{ clientId: "asc" }, { updatedAt: "desc" }],
+      take: 100,
+    }),
   ]);
 
   const pendingConflicts = enrichmentLogs.filter((r) => r.status === "conflict_pending");
@@ -198,6 +224,30 @@ export default async function ContactDetailPage({
     contact.title ?? "—",
     contact.company?.legalName ? `at ${contact.company.legalName}` : null,
   ].filter(Boolean);
+
+  const trackedFields = [
+    { key: "title", label: "Title", value: contact.title ?? "—" },
+    { key: "seniority", label: "Seniority", value: contact.seniority ?? "—" },
+    { key: "phone", label: "Phone", value: contact.phone ?? "—" },
+    { key: "industry", label: "Industry", value: contact.company?.industry ?? "—" },
+    { key: "country", label: "Country", value: contact.company?.country ?? "—" },
+    { key: "headcountBand", label: "Headcount band", value: contact.company?.headcountBand ?? "—" },
+  ] as const;
+
+  const latestProviderByField = new Map<
+    string,
+    { provider: string; createdAt: Date }
+  >();
+  for (const row of enrichmentLogs) {
+    if (row.provider === "conflict_detector") continue;
+    const fields = parseFieldsFilled(row.fieldsFilled);
+    for (const field of fields) {
+      if (!latestProviderByField.has(field)) {
+        latestProviderByField.set(field, { provider: row.provider, createdAt: row.createdAt });
+      }
+    }
+  }
+  const crossClientActive = activeCampaignRoles.filter((r) => r.clientId !== contact.clientId);
 
   return (
     <div className="space-y-6">
@@ -307,7 +357,18 @@ export default async function ContactDetailPage({
               <dl className="space-y-2">
                 <div className="flex gap-2">
                   <dt className="w-28 shrink-0 text-muted-foreground">Name</dt>
-                  <dd className="font-medium">{contact.company?.legalName ?? "—"}</dd>
+                  <dd className="font-medium">
+                    {contact.company ? (
+                      <Link
+                        href={`/admin/companies/${contact.company.id}`}
+                        className="underline underline-offset-4 hover:underline"
+                      >
+                        {contact.company.legalName}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
                 </div>
                 <div className="flex gap-2">
                   <dt className="w-28 shrink-0 text-muted-foreground">Country</dt>
@@ -418,6 +479,129 @@ export default async function ContactDetailPage({
               {contact.retentionReviewDueAt ? relativeTime(contact.retentionReviewDueAt) : "—"}
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Source provenance</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Field name</TableHead>
+                <TableHead>Current value</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Last verified</TableHead>
+                <TableHead>Last enriched</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {trackedFields.map((field) => {
+                const provider = latestProviderByField.get(field.key);
+                return (
+                  <TableRow key={field.key}>
+                    <TableCell>{field.label}</TableCell>
+                    <TableCell>{field.value}</TableCell>
+                    <TableCell>{provider?.provider ?? "—"}</TableCell>
+                    <TableCell>{relativeTime(contact.lastVerifiedAt)}</TableCell>
+                    <TableCell>{provider ? relativeTime(provider.createdAt) : relativeTime(contact.lastEnrichedAt)}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Other roles for this person</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Contact</TableHead>
+                <TableHead>Client</TableHead>
+                <TableHead>Company</TableHead>
+                <TableHead>Gate</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {otherRoles.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    This person has no other recorded roles.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                otherRoles.map((role) => (
+                  <TableRow key={role.id}>
+                    <TableCell>
+                      <Link href={`/admin/contacts/${role.id}`} className="underline underline-offset-4 hover:underline">
+                        {role.email ?? role.id.slice(-8)}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{role.client.name}</TableCell>
+                    <TableCell>
+                      <Link href={`/admin/companies/${role.company.id}`} className="underline underline-offset-4 hover:underline">
+                        {role.company.legalName}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getStatusVariant(role.gateStatus)}>{role.gateStatus}</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Cross-client campaign status</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {crossClientActive.length > 0 ? (
+            <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+              <AlertTitle>Cross-client contention</AlertTitle>
+              <AlertDescription>
+                ⚠ This person is in {crossClientActive.length} active campaign(s) in other client workspaces. AI SDR enforces contention locks; the database shows the state.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead>Company</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {activeCampaignRoles.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={2} className="py-8 text-center text-muted-foreground">
+                    No active campaigns for this person.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                activeCampaignRoles.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.client.name}</TableCell>
+                    <TableCell>
+                      <Link href={`/admin/companies/${row.company.id}`} className="underline underline-offset-4 hover:underline">
+                        {row.company.legalName}
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 

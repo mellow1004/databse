@@ -188,7 +188,7 @@ export default async function AdminDashboardPage() {
       orderBy: [{ retentionReviewDueAt: "asc" }, { updatedAt: "desc" }],
       include: {
         person: { select: { fullName: true } },
-        company: { select: { legalName: true } },
+        company: { select: { id: true, legalName: true } },
       },
     }),
     db.providerBudget.findMany({
@@ -276,7 +276,7 @@ export default async function AdminDashboardPage() {
     if (log.resourceType === "company") {
       const c = companyById.get(log.resourceId);
       const label = c?.legalName ?? `…${log.resourceId.slice(-6)}`;
-      return <Link href="/admin/dedup" className="hover:underline">{label}</Link>;
+      return <Link href={`/admin/companies/${log.resourceId}`} className="hover:underline">{label}</Link>;
     }
     if (log.resourceType === "suppression") {
       const s = suppressionById.get(log.resourceId);
@@ -541,7 +541,11 @@ export default async function AdminDashboardPage() {
                         {r.person.fullName}
                       </Link>
                     </TableCell>
-                    <TableCell>{r.company.legalName}</TableCell>
+                    <TableCell>
+                      <Link href={`/admin/companies/${r.company.id}`} className="hover:underline">
+                        {r.company.legalName}
+                      </Link>
+                    </TableCell>
                     <TableCell>{r.lastVerifiedAt ? formatRelativeTime(r.lastVerifiedAt) : "—"}</TableCell>
                     <TableCell>{r.retentionReviewDueAt ? formatRelativeTime(r.retentionReviewDueAt) : "—"}</TableCell>
                     <TableCell>

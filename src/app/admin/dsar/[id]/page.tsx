@@ -62,7 +62,7 @@ export default async function DsarCaseDetailPage({
         where: { id: { in: matchedIds } },
         include: {
           person: { select: { fullName: true, linkedinUrl: true, primaryPhone: true } },
-          company: { select: { legalName: true } },
+          company: { select: { id: true, legalName: true } },
         },
       })
     : [];
@@ -148,7 +148,11 @@ export default async function DsarCaseDetailPage({
                         </Link>
                       </TableCell>
                       <TableCell>{c.email ?? "—"}</TableCell>
-                      <TableCell>{c.company.legalName}</TableCell>
+                      <TableCell>
+                        <Link href={`/admin/companies/${c.company.id}`} className="underline underline-offset-4 hover:underline">
+                          {c.company.legalName}
+                        </Link>
+                      </TableCell>
                       <TableCell>{matchedOn.length ? matchedOn.join(", ") : "—"}</TableCell>
                     </TableRow>
                   );

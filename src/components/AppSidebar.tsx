@@ -16,6 +16,7 @@ import {
   Scale,
   Shield,
   BookOpen,
+  Workflow,
   Upload,
   User,
   Wand2,
@@ -51,6 +52,7 @@ export function AppSidebar() {
   const isAuditLog = pathname.startsWith("/admin/audit-log");
   const isRollback = pathname.startsWith("/admin/rollback");
   const isDataDictionary = pathname.startsWith("/admin/data-dictionary");
+  const isEnrichmentWaterfall = pathname.startsWith("/admin/enrichment-waterfall");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -114,6 +116,13 @@ export function AppSidebar() {
           >
             <AlertTriangle size={16} aria-hidden />
             Resolve conflicts
+          </Link>
+          <Link
+            href="/admin/enrichment-waterfall"
+            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${navLinkClass(isEnrichmentWaterfall)}`}
+          >
+            <Workflow size={16} aria-hidden />
+            Enrichment waterfall
           </Link>
         </div>
 

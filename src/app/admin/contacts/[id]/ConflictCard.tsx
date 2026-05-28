@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -120,6 +121,12 @@ export default function ConflictCard({
             );
           })}
         </div>
+        <Alert>
+          <AlertDescription>
+            Primary-by-market provider wins when confidence delta ≥ 15%. Below 15%,
+            manual review required. Manual overrides lock for 30 days.
+          </AlertDescription>
+        </Alert>
         <div className="space-y-2">
           <Label htmlFor={`reason-${enrichmentLogId}`}>
             Resolution reason (logged in audit_log)
