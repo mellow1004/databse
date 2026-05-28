@@ -125,6 +125,15 @@ model Contact {
   campaignActive   Boolean @default(false) // runtime flag written by AI SDR platform
   quarantineReason String? // null if not quarantined
   lifecycleStage   String  @default("active") // "active" | "frozen" | "anonymised" | "legal_hold"
+  // Lawful basis & processing purpose (P0 #3 — GDPR Article 6 visibility)
+  lawfulBasis          String? // "legitimate_interest" | "consent" | "contract" | "legal_obligation"
+  processingPurpose    String? // "b2b_prospecting" | "campaign_execution" | "analytics"
+  liaStatus            String? // "documented" | "pending_review" | "expired"
+  liaCompletedAt       DateTime?
+  sensitivityTier      String? // "public" | "business_contact" | "personal"
+  market               String? // "uk_nordics" | "north_america" | "dach" | "benelux" | "other"
+  retentionStatus      String   @default("active") // "active" | "approaching_review" | "anonymisation_queued" | "anonymised"
+  retentionReviewDueAt DateTime?
 
   /// If set, this contact was merged into another contact (mergedIntoId).
   /// Soft-archived — kept for traceability and the 30-day rollback window (PRD Section 7).
@@ -156,6 +165,8 @@ model Contact {
   @@index([gateStatus])
   @@index([campaignActive])
   @@index([mergedIntoId])
+  @@index([retentionStatus])
+  @@index([retentionReviewDueAt])
   @@map("contacts")
 }
 
@@ -292,6 +303,13 @@ model QuarantineLog {
   releasedAt    DateTime?
   releasedBy    String?
   releaseReason String?
+  // Two-path quarantine (P0 #6, #7)
+  previousGate         String?   // gate the contact was at before quarantine
+  proposedRestoredGate String?   // "gate_1" if release approved
+  approvalPath         String    @default("manual") // "auto" (stale-only) | "manual" (bounce/gdpr/manual_flag/accuracy/merge_conflict)
+  approvalRequestedBy  String?
+  approvalRequestedAt  DateTime?
+  escalatedAt          DateTime? // populated when pending > 30 days
   createdAt     DateTime  @default(now())
 
   @@index([clientId])
@@ -386,6 +404,18 @@ model Suppression {
   releasedAt    DateTime?
   releasedBy    String?
   releaseReason String?
+  // Release approval workflow (P0 #4, #5 — opt-out / global / domain releases require Data Owner approval)
+  releaseApprovalRequired   Boolean   @default(false)
+  releaseRequestedBy        String?
+  releaseRequestedAt        DateTime?
+  releaseApprovedBy         String?
+  releaseApprovedAt         DateTime?
+  releaseApprovalReason     String?
+  affectedClientCount       Int?      // populated for global / domain-level
+  regulatoryReviewCompleted Boolean   @default(false)
+  regulatoryReviewBy        String?
+  regulatoryReviewAt        DateTime?
+  regulatoryReviewNotes     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -397,6 +427,102 @@ model Suppression {
   @@index([contactId])
   @@index([releaseStatus])
   @@map("suppressions")
+}
+
+/// Data Subject Access Request — one row per request.
+/// Tracks the 30-day GDPR deadline, propagation across the 4 erasure targets,
+/// and the audit trail of every action taken against the case.
+model DsarCase {
+  id         String @id @default(cuid())
+  clientId   String
+  caseNumber String @unique // human-readable "DSAR-2026-0001" style id
+  caseType   String // "access" (Article 15) | "erasure" (Article 17) | "rectification" (Article 16) | "objection" (Article 21) | "restriction" (Article 18) | "portability" (Article 20)
+
+  // Subject identifiers (any subset)
+  subjectEmail       String?
+  subjectPhone       String?
+  subjectLinkedinUrl String?
+  subjectName        String?
+
+  // Lifecycle & deadlines
+  status        String   @default("open") // "open" | "in_progress" | "awaiting_subject" | "completed" | "rejected"
+  receivedAt    DateTime @default(now())
+  deadlineAt    DateTime // received + 30 days (GDPR statutory)
+  closedAt      DateTime?
+  closureReason String?
+
+  // Ownership
+  ownerId String // Data Owner user id
+
+  // Erasure-specific propagation (P0 #2 — 4 targets must confirm)
+  tombstoneCreated          Boolean   @default(false)
+  tombstoneCreatedAt        DateTime?
+  aiTrainingDatasetNotified Boolean   @default(false)
+  aiTrainingDatasetAt       DateTime?
+  aiSdrPlatformNotified     Boolean   @default(false)
+  aiSdrPlatformAt           DateTime?
+  subProcessorsNotified     Boolean   @default(false)
+  subProcessorsAt           DateTime?
+  propagationCompletedAt    DateTime? // set only when all 4 confirmed
+
+  // Matched records (cached from search; JSON array of contact ids)
+  matchedContactIds String?
+  matchedCount      Int    @default(0)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+  @@index([deadlineAt])
+  @@index([caseType])
+  @@index([ownerId])
+  @@map("dsar_cases")
+}
+
+/// Every action taken on a DSAR case — search, export, deletion, propagation confirmation, etc.
+model DsarAction {
+  id          String   @id @default(cuid())
+  caseId      String
+  actionType  String // "case_opened" | "search_executed" | "data_exported" | "deletion_executed" | "tombstone_created" | "ai_training_propagation_confirmed" | "ai_sdr_propagation_confirmed" | "sub_processor_propagation_confirmed" | "case_closed" | "case_rejected" | "rectification_applied" | "objection_recorded"
+  actorUserId String
+  metadata    String? // JSON: search criteria, export format, deletion targets, etc.
+  createdAt   DateTime @default(now())
+
+  @@index([caseId])
+  @@index([actionType])
+  @@index([createdAt])
+  @@map("dsar_actions")
+}
+
+/// Approval gate for bulk operations affecting >100 records.
+/// Any service detecting >100 affected records writes a row here in "pending" state
+/// and blocks the action until a Data Owner approves it.
+model BulkActionApproval {
+  id              String   @id @default(cuid())
+  clientId        String? // null = cross-client action (e.g. global suppression batch)
+  actionType      String // "bulk_suppression_add" | "bulk_suppression_release" | "bulk_quarantine_release" | "bulk_anonymisation" | "bulk_gate_promotion" | "bulk_hard_delete"
+  requestedBy     String // user id of the requester
+  requestedAt     DateTime @default(now())
+  recordsAffected Int
+  requestPayload  String? // JSON of the request (so it can be replayed on approval)
+  status          String   @default("pending") // "pending" | "approved" | "rejected" | "executed" | "cancelled"
+  approvedBy      String?
+  approvedAt      DateTime?
+  approvalReason  String?
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  executedAt      DateTime?
+  executionDetail String? // JSON
+  expiresAt       DateTime? // pending requests expire after 7 days
+
+  @@index([status])
+  @@index([clientId])
+  @@index([requestedBy])
+  @@index([actionType])
+  @@map("bulk_action_approvals")
 }
 
 /// Hashed identifiers of hard-deleted records (GDPR Article 17).

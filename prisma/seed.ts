@@ -16,6 +16,7 @@ const sha256Hex = (s: string) =>
 const newId = () => faker.string.uuid();
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000);
+const daysFromNow = (days: number) => new Date(Date.now() + days * 86_400_000);
 
 function pickOne<T>(xs: readonly T[]): T {
   return xs[faker.number.int({ min: 0, max: xs.length - 1 })];
@@ -35,6 +36,21 @@ function chunk<T>(xs: T[], n: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
   return out;
+}
+
+function marketFromCountry(country: string | null | undefined): string {
+  if (!country) return "other";
+  const normalized = country.toUpperCase();
+  if (["UK", "GB", "SE", "NO", "DK", "FI", "DE"].includes(normalized)) return "uk_nordics";
+  if (["US", "CA", "MX"].includes(normalized)) return "north_america";
+  if (["FR", "NL", "BE", "LU"].includes(normalized)) return "benelux";
+  return "other";
+}
+
+function shouldApproachRetentionReview(seedKey: string): boolean {
+  const hashPrefix = sha256Hex(seedKey).slice(0, 8);
+  const bucket = Number.parseInt(hashPrefix, 16) % 100;
+  return bucket < 5;
 }
 
 // ============================================================
@@ -70,7 +86,7 @@ const CONTACTS_PER_CLIENT = 660; // ~50% gate_0, ~30% gate_1, ~20% gate_2
 // ============================================================
 
 type SeededClient = { id: string; name: string };
-type SeededCompany = { id: string; clientId: string; rootDomain: string; legalName: string };
+type SeededCompany = { id: string; clientId: string; rootDomain: string; legalName: string; country: string };
 type SeededContactRef = { id: string; clientId: string; gateStatus: string };
 type SeededUser = { id: string; email: string; role: string; clientId: string | null };
 
@@ -259,11 +275,13 @@ async function seedCompaniesAndDomains(client: SeededClient) {
   const companies: SeededCompany[] = [];
   for (let i = 0; i < COMPANIES_PER_CLIENT; i++) {
     const legalName = faker.company.name();
+    const country = pickOne(COUNTRIES);
     companies.push({
       id: newId(),
       clientId: client.id,
       rootDomain: makeDomain(legalName),
       legalName,
+      country,
     });
   }
 
@@ -276,7 +294,7 @@ async function seedCompaniesAndDomains(client: SeededClient) {
       legalName: c.legalName,
       parentCompanyId: null,
       industry: pickOne(INDUSTRIES),
-      country: pickOne(COUNTRIES),
+      country: c.country,
       headcountBand: pickOne(HEADCOUNT_BANDS),
       createdAt: daysAgo(faker.number.int({ min: 60, max: 300 })),
     })),
@@ -378,6 +396,8 @@ async function seedPersonsAndContacts(client: SeededClient, companies: SeededCom
     id: string; clientId: string; personId: string; companyId: string;
     email: string | null; phone: string | null; title: string; seniority: string;
     gateStatus: string; campaignActive: boolean; quarantineReason: string | null; lifecycleStage: string;
+    lawfulBasis: string; processingPurpose: string; liaStatus: string; liaCompletedAt: Date;
+    sensitivityTier: string; market: string; retentionStatus: string; retentionReviewDueAt: Date | null;
     freshnessLabel: string | null; lastVerifiedAt: Date | null; lastEnrichedAt: Date | null; derivedFieldVersion: string | null;
     writeSource: string | null; writePriority: number | null; manualOverrideUntil: Date | null;
     createdAt: Date;
@@ -397,6 +417,9 @@ async function seedPersonsAndContacts(client: SeededClient, companies: SeededCom
       ["other", 5],
     ] as const);
     const title = pickOne(TITLES_BY_SENIORITY[seniority]);
+    const market = marketFromCountry(company.country ?? null);
+    const contactId = newId();
+    const retentionReviewFlag = shouldApproachRetentionReview(`${client.id}:${contactId}`);
 
     // Gate distribution: ~50% gate_0, ~30% gate_1, ~20% gate_2
     const gateRoll = faker.number.float({ min: 0, max: 1 });
@@ -414,7 +437,7 @@ async function seedPersonsAndContacts(client: SeededClient, companies: SeededCom
     }
 
     contacts.push({
-      id: newId(),
+      id: contactId,
       clientId: client.id,
       personId: person.id,
       companyId: company.id,
@@ -426,6 +449,14 @@ async function seedPersonsAndContacts(client: SeededClient, companies: SeededCom
       campaignActive: faker.number.float({ min: 0, max: 1 }) < 0.05,
       quarantineReason: null,
       lifecycleStage: "active",
+      lawfulBasis: "legitimate_interest",
+      processingPurpose: "b2b_prospecting",
+      liaStatus: "documented",
+      liaCompletedAt: daysAgo(60),
+      sensitivityTier: "business_contact",
+      market,
+      retentionStatus: retentionReviewFlag ? "approaching_review" : "active",
+      retentionReviewDueAt: retentionReviewFlag ? daysFromNow(30) : null,
       freshnessLabel: gateStatus === "gate_2" ? pickOne(["fresh", "aging", "stale"] as const) : null,
       lastVerifiedAt: gateStatus === "gate_0" ? null : daysAgo(faker.number.int({ min: 1, max: 80 })),
       lastEnrichedAt: gateStatus === "gate_0" ? null : daysAgo(faker.number.int({ min: 1, max: 80 })),
@@ -647,6 +678,14 @@ async function seedScenarios(
       campaignActive: false,
       quarantineReason: null as string | null,
       lifecycleStage: "active",
+      lawfulBasis: "legitimate_interest",
+      processingPurpose: "b2b_prospecting",
+      liaStatus: "documented",
+      liaCompletedAt: daysAgo(60),
+      sensitivityTier: "business_contact",
+      market: marketFromCountry(company.country),
+      retentionStatus: "active",
+      retentionReviewDueAt: null as Date | null,
       freshnessLabel: "fresh",
       derivedFieldVersion: "v1.0",
       manualOverrideUntil: null as Date | null,
