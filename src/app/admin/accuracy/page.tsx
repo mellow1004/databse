@@ -19,10 +19,13 @@ import {
 } from "@/components/ui/table";
 import { db } from "@/lib/db";
 import {
+  computeAccuracyPopulationSize,
   computeAccuracyStats,
   computeAccuracyTrend,
+  computePlannedSampleSize,
   maxAccuracyCycle,
 } from "@/services/accuracy";
+import ProviderQualityThresholdBadges from "@/components/provider-quality/ProviderQualityThresholdBadges";
 import {
   getAccuracyAlertVariant,
   getAccuracyRateTextClass,
@@ -98,6 +101,13 @@ export default async function AccuracyQAPage({
     PROVIDERS.map(async (prov) => ({
       prov,
       max: await maxAccuracyCycle(selectedClientId, prov),
+    })),
+  );
+
+  const populationByProvider = await Promise.all(
+    PROVIDERS.map(async (prov) => ({
+      provider: prov,
+      population: await computeAccuracyPopulationSize(selectedClientId, prov),
     })),
   );
 
@@ -211,6 +221,10 @@ export default async function AccuracyQAPage({
         {latestStatsByProvider.map(({ provider, stats, fieldStats, nextCycle }) => {
           const rate = stats?.accuracyRate ?? null;
           const level = stats?.alertLevel ?? "insufficient_data";
+          const population =
+            populationByProvider.find((p) => p.provider === provider)?.population ?? 0;
+          const plannedSample = computePlannedSampleSize(population);
+          const belowFloor = population < 50;
           return (
             <Card key={provider} className="shadow-sm">
               <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0 pb-2">
@@ -220,15 +234,25 @@ export default async function AccuracyQAPage({
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div
-                  className={cn(
-                    "text-4xl font-semibold tabular-nums",
-                    getAccuracyRateTextClass(rate),
-                  )}
-                >
-                  {rate === null
-                    ? "Insufficient sample"
-                    : `${rate.toFixed(1)}%`}
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                  <div
+                    className={cn(
+                      "text-4xl font-semibold tabular-nums",
+                      getAccuracyRateTextClass(rate),
+                    )}
+                  >
+                    {rate === null
+                      ? "Insufficient sample"
+                      : `${rate.toFixed(1)}%`}
+                  </div>
+                  {stats && rate !== null ? (
+                    <ProviderQualityThresholdBadges
+                      provider={provider}
+                      cycleNumber={stats.cycleNumber}
+                      accuracyRate={rate}
+                      reviewed={stats.reviewed}
+                    />
+                  ) : null}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {stats ? (
@@ -270,10 +294,24 @@ export default async function AccuracyQAPage({
                   </Table>
                 </div>
                 <Separator />
+                <p className="text-sm text-slate-700">
+                  {belowFloor ? (
+                    <>
+                      Gate 2 for {provider}: {population} records. Sample: all {population}{" "}
+                      (below 50-record floor — results not meaningful).
+                    </>
+                  ) : (
+                    <>
+                      Gate 2 for {provider}: {population} records. Sample: {plannedSample} (1% =
+                      {Math.ceil(population * 0.01)} applied, floor/cap enforced).
+                    </>
+                  )}
+                </p>
                 <DrawSampleButton
                   clientId={selectedClientId}
                   provider={provider}
                   nextCycle={nextCycle}
+                  disabled={belowFloor}
                 />
               </CardContent>
             </Card>

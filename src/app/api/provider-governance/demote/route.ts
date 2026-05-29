@@ -6,6 +6,7 @@ type Body = {
   provider?: string;
   cycleNumber?: number;
   accuracyRate?: number;
+  reviewType?: string;
 };
 
 export async function POST(req: Request) {
@@ -16,10 +17,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "provider is required" }, { status: 400 });
     }
 
+    const isDemotionReview = body.reviewType === "demotion_review";
     await db.auditLog.create({
       data: {
         actorUserId,
-        action: "provider_waterfall_demote_requested",
+        action: isDemotionReview
+          ? "provider_demotion_review_opened"
+          : "provider_waterfall_demote_requested",
         resourceType: "provider_governance",
         resourceId: body.provider,
         recordsAffected: 1,
@@ -27,7 +31,7 @@ export async function POST(req: Request) {
           provider: body.provider,
           cycleNumber: body.cycleNumber ?? null,
           accuracyRate: body.accuracyRate ?? null,
-          mode: "demo_stub",
+          mode: isDemotionReview ? "demotion_review" : "demo_stub",
         }),
       },
     });

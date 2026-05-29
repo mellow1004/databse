@@ -255,14 +255,22 @@ export async function filterTargetableContacts(
 // Exported for tests / future targeting query reuse.
 export { normalizeDomain };
 
-async function computeAffectedClientCount(suppression: {
+function buildContactMatchWhere(suppression: {
   scope: string;
   clientId: string | null;
   contactId: string | null;
   email: string | null;
   domain: string | null;
-}): Promise<number> {
-  if (suppression.scope === "client_level") return 1;
+}): Record<string, unknown> | null {
+  const base: Record<string, unknown> = { mergedIntoId: null };
+
+  if (suppression.scope === "client_level") {
+    if (!suppression.clientId) return null;
+    base.clientId = suppression.clientId;
+    if (!suppression.contactId && !suppression.email && !suppression.domain) {
+      return base;
+    }
+  }
 
   const whereParts: Array<Record<string, unknown>> = [];
   if (suppression.contactId) whereParts.push({ id: suppression.contactId });
@@ -276,21 +284,128 @@ async function computeAffectedClientCount(suppression: {
     });
   }
 
+  if (suppression.scope === "domain_level") {
+    if (!suppression.domain) return null;
+    return {
+      mergedIntoId: null,
+      OR: [
+        { company: { rootDomain: suppression.domain } },
+        { company: { domainAliases: { some: { aliasDomain: suppression.domain } } } },
+      ],
+    };
+  }
+
+  if (whereParts.length === 0) {
+    if (suppression.scope === "global") return { mergedIntoId: null };
+    return null;
+  }
+
+  return { ...base, OR: whereParts };
+}
+
+async function computeAffectedClientCount(suppression: {
+  scope: string;
+  clientId: string | null;
+  contactId: string | null;
+  email: string | null;
+  domain: string | null;
+}): Promise<number> {
+  if (suppression.scope === "client_level") return 1;
+
+  const where = buildContactMatchWhere(suppression);
+  if (!where) return 0;
+
   const rows = await db.contact.findMany({
-    where:
-      whereParts.length > 0
-        ? { OR: whereParts }
-        : undefined,
+    where,
     distinct: ["clientId"],
     select: { clientId: true },
   });
   return rows.length;
 }
 
+/** Approximate count of contacts that would match this suppression (not exact). */
+export async function computeApproximateAffectedContactCount(suppression: {
+  scope: string;
+  clientId: string | null;
+  contactId: string | null;
+  email: string | null;
+  domain: string | null;
+}): Promise<number> {
+  const where = buildContactMatchWhere(suppression);
+  if (!where) return 0;
+  return db.contact.count({ where });
+}
+
+export async function findContactIdsAffectedBySuppression(suppression: {
+  scope: string;
+  clientId: string | null;
+  contactId: string | null;
+  email: string | null;
+  domain: string | null;
+}): Promise<string[]> {
+  const where = buildContactMatchWhere(suppression);
+  if (!where) return [];
+  const rows = await db.contact.findMany({
+    where,
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+export async function getSuppressionReleaseScopeSummary(suppressionId: string): Promise<{
+  summaryText: string;
+  approximateContactCount: number;
+  clientCount: number;
+}> {
+  const suppression = await db.suppression.findUnique({ where: { id: suppressionId } });
+  if (!suppression) throw new Error(`Suppression ${suppressionId} not found.`);
+
+  const approximateContactCount = await computeApproximateAffectedContactCount(suppression);
+
+  if (suppression.scope === "client_level") {
+    const client = suppression.clientId
+      ? await db.client.findUnique({
+          where: { id: suppression.clientId },
+          select: { name: true },
+        })
+      : null;
+    const clientName = client?.name ?? "Unknown client";
+    return {
+      summaryText: `Affects ${clientName}, ~${approximateContactCount} contacts in DB matching this suppression`,
+      approximateContactCount,
+      clientCount: 1,
+    };
+  }
+
+  if (suppression.scope === "global") {
+    const clientCount = await db.client.count();
+    return {
+      summaryText: `Affects all ${clientCount} clients, ~${approximateContactCount} contacts in DB matching`,
+      approximateContactCount,
+      clientCount,
+    };
+  }
+
+  return {
+    summaryText: `Affects all clients, ~${approximateContactCount} contacts at this domain`,
+    approximateContactCount,
+    clientCount: await computeAffectedClientCount(suppression),
+  };
+}
+
+type ReleaseAuditExtras = {
+  affectedContactCount: number;
+  approverUserId: string;
+  reason: string;
+  regulatoryReviewReference?: string | null;
+  confirmationChecked: boolean;
+};
+
 async function releaseSuppressionDirect(input: {
   suppressionId: string;
   actorUserId: string;
   releaseReason: string;
+  auditExtras?: ReleaseAuditExtras;
 }): Promise<void> {
   const suppression = await db.suppression.findUnique({ where: { id: input.suppressionId } });
   if (!suppression) throw new Error(`Suppression ${input.suppressionId} not found.`);
@@ -318,6 +433,7 @@ async function releaseSuppressionDirect(input: {
         afterState: JSON.stringify({
           releaseStatus: "released",
           reason: input.releaseReason,
+          ...(input.auditExtras ?? {}),
         }),
       },
     });
@@ -328,6 +444,8 @@ export async function requestSuppressionRelease(input: {
   suppressionId: string;
   reason: string;
   requestorId: string;
+  regulatoryReviewReference?: string;
+  confirmationChecked?: boolean;
 }): Promise<{ status: "request_pending" | "released_directly" }> {
   const reason = input.reason.trim();
   if (!reason) throw new Error("A non-empty release reason is required.");
@@ -337,6 +455,15 @@ export async function requestSuppressionRelease(input: {
   if (suppression.releaseStatus === "released") return { status: "released_directly" };
 
   const decision = suppressionRequiresApproval(suppression);
+  if (decision.requiresApproval) {
+    if (!input.confirmationChecked) {
+      throw new Error("Regulatory compliance confirmation is required.");
+    }
+    if (suppression.isOptOut && !(input.regulatoryReviewReference ?? "").trim()) {
+      throw new Error("Regulatory review reference is required for opt-out suppressions.");
+    }
+  }
+
   if (!decision.requiresApproval) {
     await releaseSuppressionDirect({
       suppressionId: input.suppressionId,
@@ -346,7 +473,10 @@ export async function requestSuppressionRelease(input: {
     return { status: "released_directly" };
   }
 
-  const affectedClientCount = await computeAffectedClientCount(suppression);
+  const [affectedClientCount, affectedContactCount] = await Promise.all([
+    computeAffectedClientCount(suppression),
+    computeApproximateAffectedContactCount(suppression),
+  ]);
   const now = new Date();
   await db.$transaction(async (tx) => {
     await tx.suppression.update({
@@ -372,6 +502,9 @@ export async function requestSuppressionRelease(input: {
           releaseStatus: "request_pending",
           reason,
           affectedClientCount,
+          affectedContactCount,
+          regulatoryReviewReference: input.regulatoryReviewReference?.trim() || null,
+          confirmationChecked: true,
           requiresRegulatoryReview: decision.requiresRegulatoryReview,
         }),
       },
@@ -384,20 +517,25 @@ export async function approveSuppressionRelease(input: {
   suppressionId: string;
   approverId: string;
   approvalReason: string;
-  regulatoryReviewNotes?: string;
+  regulatoryReviewReference?: string;
+  confirmationChecked?: boolean;
 }): Promise<void> {
   const approvalReason = input.approvalReason.trim();
   if (!approvalReason) throw new Error("approvalReason is required.");
+  if (!input.confirmationChecked) {
+    throw new Error("Regulatory compliance confirmation is required.");
+  }
 
   const suppression = await db.suppression.findUnique({ where: { id: input.suppressionId } });
   if (!suppression) throw new Error(`Suppression ${input.suppressionId} not found.`);
   if (suppression.releaseStatus !== "request_pending") {
     throw new Error("Suppression is not awaiting approval.");
   }
-  if (suppression.isOptOut && !(input.regulatoryReviewNotes ?? "").trim()) {
-    throw new Error("regulatoryReviewNotes are required for opt-out suppressions.");
+  if (suppression.isOptOut && !(input.regulatoryReviewReference ?? "").trim()) {
+    throw new Error("Regulatory review reference is required for opt-out suppressions.");
   }
 
+  const affectedContactCount = await computeApproximateAffectedContactCount(suppression);
   const now = new Date();
   await db.$transaction(async (tx) => {
     await tx.suppression.update({
@@ -414,7 +552,7 @@ export async function approveSuppressionRelease(input: {
               regulatoryReviewCompleted: true,
               regulatoryReviewBy: input.approverId,
               regulatoryReviewAt: now,
-              regulatoryReviewNotes: (input.regulatoryReviewNotes ?? "").trim(),
+              regulatoryReviewNotes: (input.regulatoryReviewReference ?? "").trim(),
             }
           : {}),
       },
@@ -430,7 +568,11 @@ export async function approveSuppressionRelease(input: {
         afterState: JSON.stringify({
           releaseStatus: "released",
           approvalReason,
-          regulatoryReviewNotes: input.regulatoryReviewNotes ?? null,
+          reason: approvalReason,
+          affectedContactCount,
+          approverUserId: input.approverId,
+          regulatoryReviewReference: input.regulatoryReviewReference?.trim() || null,
+          confirmationChecked: true,
         }),
       },
     });

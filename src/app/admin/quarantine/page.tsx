@@ -16,7 +16,9 @@ import {
   getQuarantineReasonVariant,
   getQuarantineReviewStateVariant,
 } from "@/lib/badge-helpers";
+import { formatGateStatus } from "@/lib/gate-labels";
 import QuarantineFilterBar from "./QuarantineFilterBar";
+import QuarantinePathBadge from "./QuarantinePathBadge";
 import QuarantineRowActions from "./QuarantineRowActions";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +47,7 @@ function truncate(s: string | null | undefined, max: number): string {
 }
 
 type ReviewFilter = "pending" | "reviewed" | "released" | "all";
+type PathFilter = "all" | "auto" | "manual";
 type ReasonFilter =
   | "all"
   | "bounce"
@@ -65,7 +68,12 @@ const REASON_CODES: ReasonFilter[] = [
 export default async function QuarantineReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clientId?: string; reviewState?: string; reasonCode?: string }>;
+  searchParams: Promise<{
+    clientId?: string;
+    reviewState?: string;
+    reasonCode?: string;
+    approvalPath?: string;
+  }>;
 }) {
   const sp = await searchParams;
 
@@ -89,6 +97,10 @@ export default async function QuarantineReviewPage({
     ? (rc as ReasonFilter)
     : "all";
 
+  const ap = (sp.approvalPath ?? "all").toLowerCase();
+  const selectedApprovalPath: PathFilter =
+    ap === "auto" || ap === "manual" ? (ap as PathFilter) : "all";
+
   const globalPendingCount = await db.quarantineLog.count({
     where: { reviewState: "pending" },
   });
@@ -97,6 +109,7 @@ export default async function QuarantineReviewPage({
   if (selectedClientId) where.clientId = selectedClientId;
   if (selectedReviewState !== "all") where.reviewState = selectedReviewState;
   if (selectedReasonCode !== "all") where.reasonCode = selectedReasonCode;
+  if (selectedApprovalPath !== "all") where.approvalPath = selectedApprovalPath;
 
   const rows = await db.quarantineLog.findMany({
     where,
@@ -169,6 +182,7 @@ export default async function QuarantineReviewPage({
         selectedClientId={selectedClientId}
         selectedReviewState={selectedReviewState}
         selectedReasonCode={selectedReasonCode}
+        selectedApprovalPath={selectedApprovalPath}
       />
 
       <p className="text-sm text-slate-600">
@@ -186,6 +200,7 @@ export default async function QuarantineReviewPage({
                 <TableHead>Client</TableHead>
                 <TableHead>Company</TableHead>
                 <TableHead>Reason</TableHead>
+                <TableHead>Path</TableHead>
                 <TableHead>Gate flow</TableHead>
                 <TableHead>Detail</TableHead>
                 <TableHead>Added</TableHead>
@@ -196,7 +211,7 @@ export default async function QuarantineReviewPage({
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-16">
+                  <TableCell colSpan={10} className="py-16">
                     <div className="flex flex-col items-center justify-center gap-3 text-center">
                       <FilterX className="size-12 text-muted-foreground/80" aria-hidden />
                       <p className="text-sm text-slate-600">
@@ -252,15 +267,6 @@ export default async function QuarantineReviewPage({
                           <Badge className={getQuarantineReasonVariant(r.reasonCode)}>
                             {r.reasonCode}
                           </Badge>
-                          <Badge
-                            className={
-                              (r.approvalPath ?? "manual") === "auto"
-                                ? "border-transparent bg-emerald-100 text-emerald-800"
-                                : "border-transparent bg-amber-100 text-amber-800"
-                            }
-                          >
-                            {(r.approvalPath ?? "manual") === "auto" ? "Auto" : "Manual"}
-                          </Badge>
                           {isEscalated ? (
                             <span className="inline-flex items-center gap-1 text-rose-700">
                               <AlertTriangle className="size-3.5" />
@@ -271,9 +277,12 @@ export default async function QuarantineReviewPage({
                           ) : null}
                         </div>
                       </TableCell>
+                      <TableCell className="align-top">
+                        <QuarantinePathBadge approvalPath={r.approvalPath} />
+                      </TableCell>
                       <TableCell className="align-top text-xs">
                         {r.previousGate && r.proposedRestoredGate
-                          ? `${r.previousGate} → ${r.proposedRestoredGate}`
+                          ? `${formatGateStatus(r.previousGate)} → ${formatGateStatus(r.proposedRestoredGate)}`
                           : "—"}
                       </TableCell>
                       <TableCell className="max-w-[220px] align-top text-xs text-slate-700">

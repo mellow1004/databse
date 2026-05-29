@@ -136,6 +136,8 @@ async function wipe() {
   await db.mergeHistory.deleteMany();
   await db.gateStatusHistory.deleteMany();
   await db.verification.deleteMany();
+  await db.otto2CallbackQueue.deleteMany();
+  await db.otto2Call.deleteMany();
   await db.enrichmentLog.deleteMany();
 
   // Identity layer (children → parents)
@@ -254,6 +256,7 @@ async function seedIntegrationContracts() {
     { providerName: "apollo", providerType: "enrichment", contractVersion: "2025-02", scc: true, mech: "sccs", markets: ["US", "CA"], dailyCreditBudget: 1500 },
     { providerName: "clay", providerType: "enrichment", contractVersion: "2024-11", scc: true, mech: "sccs", markets: ["US", "GB"], dailyCreditBudget: 800 },
     { providerName: "cognism_diamond", providerType: "phone_verification", contractVersion: "2025-03", scc: true, mech: "sccs", markets: ["GB", "SE", "NO", "DK"], dailyCreditBudget: 300 },
+    { providerName: "otto2", providerType: "calling_platform", contractVersion: "2026-01", scc: true, mech: "sccs", markets: ["SE", "NO", "DK", "FI"], dailyCreditBudget: null as number | null },
   ];
   const rows = defs.map((c) => ({
     id: newId(),
@@ -266,8 +269,11 @@ async function seedIntegrationContracts() {
     transferImpactAssessmentRef: `tia-${c.providerName}-${c.contractVersion}`,
     subProcessorRegisterUpdated: daysAgo(faker.number.int({ min: 30, max: 180 })),
     status: "active",
-    rateLimitConfig: JSON.stringify({ requestsPerMinute: 60, requestsPerDay: c.dailyCreditBudget * 10 }),
-    dailyCreditBudget: c.dailyCreditBudget,
+    rateLimitConfig: JSON.stringify({
+      requestsPerMinute: 60,
+      requestsPerDay: c.dailyCreditBudget != null ? c.dailyCreditBudget * 10 : null,
+    }),
+    dailyCreditBudget: c.dailyCreditBudget ?? undefined,
     primaryMarkets: JSON.stringify(c.markets),
     effectiveFrom: yearAgo,
     effectiveUntil: null,
@@ -1187,10 +1193,163 @@ async function seedAuditLog(clients: SeededClient[], users: SeededUser[]) {
 }
 
 // ============================================================
+// Otto 2 calling platform (historical calls + callback queue)
+// ============================================================
+
+async function seedOtto2(clients: SeededClient[], users: SeededUser[]) {
+  const sdrUserId = users.find((u) => u.role === "data_owner")?.id ?? "system";
+  const callRows: {
+    id: string;
+    contactId: string;
+    clientId: string;
+    sdrUserId: string;
+    outcome: string;
+    durationSec: number | null;
+    notes: string | null;
+    calledAt: Date;
+  }[] = [];
+  const callbackRows: {
+    id: string;
+    contactId: string;
+    clientId: string;
+    scheduledFor: Date;
+    status: string;
+    createdFromCallId: string | null;
+    notes: string | null;
+  }[] = [];
+  const phoneVerRows: {
+    id: string;
+    clientId: string;
+    contactId: string;
+    verificationType: string;
+    provider: string;
+    status: string;
+    confidence: number;
+    rawResponse: string | null;
+    batchId: string;
+    createdAt: Date;
+  }[] = [];
+  const contactAttemptUpdates = new Map<string, number>();
+
+  for (const client of clients) {
+    const gate2WithPhone = await db.contact.findMany({
+      where: {
+        clientId: client.id,
+        gateStatus: "gate_2",
+        mergedIntoId: null,
+        phone: { not: null },
+      },
+      select: { id: true, clientId: true, phone: true },
+    });
+
+    for (const contact of gate2WithPhone) {
+      if (!contact.phone?.trim()) continue;
+      const bucket = otto2DeterministicBucket(`${client.id}:${contact.id}:otto2-eligible`);
+      if (bucket >= 5) continue;
+
+      phoneVerRows.push({
+        id: newId(),
+        clientId: client.id,
+        contactId: contact.id,
+        verificationType: "phone",
+        provider: "otto2",
+        status: "valid",
+        confidence: 0.92,
+        rawResponse: null,
+        batchId: `otto2-phone-${client.id.slice(0, 8)}`,
+        createdAt: daysAgo(faker.number.int({ min: 5, max: 45 })),
+      });
+
+      const callCount = otto2DeterministicBucket(`${contact.id}:call-count`, 6);
+      let lastCallId: string | null = null;
+      for (let i = 0; i < callCount; i++) {
+        const outcome =
+          OTTO2_OUTCOMES[
+            otto2DeterministicBucket(`${contact.id}:outcome:${i}`, OTTO2_OUTCOMES.length)
+          ];
+        const callId = newId();
+        callRows.push({
+          id: callId,
+          contactId: contact.id,
+          clientId: client.id,
+          sdrUserId,
+          outcome,
+          durationSec: faker.number.int({ min: 15, max: 420 }),
+          notes: faker.helpers.maybe(() => faker.lorem.sentence(), { probability: 0.3 }) ?? null,
+          calledAt: daysAgo(faker.number.int({ min: 1, max: 90 }) + i),
+        });
+        lastCallId = callId;
+      }
+      contactAttemptUpdates.set(contact.id, callCount);
+
+      const callbackBucket = otto2DeterministicBucket(`${contact.id}:callback-queue`);
+      if (callbackBucket < 1 && lastCallId) {
+        callbackRows.push({
+          id: newId(),
+          contactId: contact.id,
+          clientId: client.id,
+          scheduledFor: daysFromNow(faker.number.int({ min: 1, max: 7 })),
+          status: "pending",
+          createdFromCallId: lastCallId,
+          notes: "Seed callback follow-up",
+        });
+      }
+    }
+  }
+
+  if (callbackRows.length === 0 && callRows.length > 0) {
+    const last = callRows[callRows.length - 1];
+    callbackRows.push({
+      id: newId(),
+      contactId: last.contactId,
+      clientId: last.clientId,
+      scheduledFor: daysFromNow(3),
+      status: "pending",
+      createdFromCallId: last.id,
+      notes: "Seed callback follow-up (deterministic demo)",
+    });
+  }
+
+  for (const [contactId, attempts] of contactAttemptUpdates) {
+    await db.contact.update({
+      where: { id: contactId },
+      data: { phoneVerified: true, totalCallAttempts: attempts },
+    });
+  }
+
+  for (const batch of chunk(callRows, 300)) {
+    await db.otto2Call.createMany({ data: batch });
+  }
+  for (const batch of chunk(callbackRows, 100)) {
+    await db.otto2CallbackQueue.createMany({ data: batch });
+  }
+  for (const batch of chunk(phoneVerRows, 300)) {
+    await db.verification.createMany({ data: batch });
+  }
+
+  console.log(
+    `  otto2: ${contactAttemptUpdates.size} phone-verified prospects, ${callRows.length} calls, ${callbackRows.length} pending callbacks`,
+  );
+}
+
+// ============================================================
 // Main
 // ============================================================
 
-const PROVIDER_COUNT = 6;
+const PROVIDER_COUNT = 7;
+
+const OTTO2_OUTCOMES = [
+  "no_answer",
+  "callback",
+  "qualified_interview",
+  "decline",
+  "wrong_number",
+  "answer_no_interview",
+] as const;
+
+function otto2DeterministicBucket(key: string, mod = 100): number {
+  return Number.parseInt(sha256Hex(key).slice(0, 8), 16) % mod;
+}
 
 export type RunFullSeedResult = {
   clients: number;
@@ -1250,6 +1409,7 @@ export async function runFullSeed(): Promise<RunFullSeedResult> {
   companiesCount += scenarioResult.extraCompanies;
 
   const supTomb = await seedSuppressionsAndTombstones(clients);
+  await seedOtto2(clients, users);
   const auditCount = await seedAuditLog(clients, users);
 
   console.log(

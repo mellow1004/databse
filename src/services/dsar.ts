@@ -19,6 +19,7 @@ type DsarCaseType =
 type PropagationTarget =
   | "ai_training_dataset"
   | "ai_sdr_platform"
+  | "otto2"
   | "sub_processors";
 
 function addDays(d: Date, days: number): Date {
@@ -48,7 +49,24 @@ function parseIds(raw: string | null): string[] {
 function toActionType(target: PropagationTarget): string {
   if (target === "ai_training_dataset") return "ai_training_propagation_confirmed";
   if (target === "ai_sdr_platform") return "ai_sdr_propagation_confirmed";
+  if (target === "otto2") return "otto2_propagation_confirmed";
   return "sub_processor_propagation_confirmed";
+}
+
+function erasurePropagationComplete(dsarCase: {
+  tombstoneCreated: boolean;
+  aiTrainingDatasetNotified: boolean;
+  aiSdrPlatformNotified: boolean;
+  otto2Notified: boolean;
+  subProcessorsNotified: boolean;
+}): boolean {
+  return (
+    dsarCase.tombstoneCreated &&
+    dsarCase.aiTrainingDatasetNotified &&
+    dsarCase.aiSdrPlatformNotified &&
+    dsarCase.otto2Notified &&
+    dsarCase.subProcessorsNotified
+  );
 }
 
 async function nextCaseNumber(
@@ -356,6 +374,16 @@ export async function executeDsarErasure(caseId: string, actorUserId: string): P
   let contactsHardDeleted = 0;
   let tombstonesCreated = 0;
 
+  if (contactIds.length > 0) {
+    await db.otto2CallbackQueue.deleteMany({
+      where: { contactId: { in: contactIds } },
+    });
+    await db.otto2Call.updateMany({
+      where: { contactId: { in: contactIds } },
+      data: { notes: null },
+    });
+  }
+
   for (const contactId of contactIds) {
     const result = await hardDeleteContact({
       contactId,
@@ -381,6 +409,8 @@ export async function executeDsarErasure(caseId: string, actorUserId: string): P
         aiSdrPlatformAt: null,
         subProcessorsNotified: false,
         subProcessorsAt: null,
+        otto2Notified: false,
+        otto2At: null,
         propagationCompletedAt: null,
       },
     });
@@ -419,18 +449,16 @@ export async function confirmPropagation(
       ? { aiTrainingDatasetNotified: true, aiTrainingDatasetAt: now }
       : target === "ai_sdr_platform"
         ? { aiSdrPlatformNotified: true, aiSdrPlatformAt: now }
-        : { subProcessorsNotified: true, subProcessorsAt: now };
+        : target === "otto2"
+          ? { otto2Notified: true, otto2At: now }
+          : { subProcessorsNotified: true, subProcessorsAt: now };
 
   return db.$transaction(async (tx) => {
     const updated = await tx.dsarCase.update({
       where: { id: caseId },
       data: updateData,
     });
-    const allConfirmed =
-      updated.tombstoneCreated &&
-      updated.aiTrainingDatasetNotified &&
-      updated.aiSdrPlatformNotified &&
-      updated.subProcessorsNotified;
+    const allConfirmed = erasurePropagationComplete(updated);
 
     await tx.dsarCase.update({
       where: { id: caseId },
@@ -461,10 +489,18 @@ export async function closeDsarCase(
 
   const dsarCase = await db.dsarCase.findUnique({ where: { id: caseId } });
   if (!dsarCase) throw new Error(`DSAR case ${caseId} not found.`);
-  if (dsarCase.caseType === "erasure" && !dsarCase.propagationCompletedAt) {
-    throw new Error(
-      "Cannot close erasure case — propagation not complete on all 4 targets.",
-    );
+  if (dsarCase.caseType === "erasure") {
+    const missing: string[] = [];
+    if (!dsarCase.tombstoneCreated) missing.push("tombstone");
+    if (!dsarCase.aiTrainingDatasetNotified) missing.push("ai_training_dataset");
+    if (!dsarCase.aiSdrPlatformNotified) missing.push("ai_sdr_platform");
+    if (!dsarCase.otto2Notified) missing.push("otto2");
+    if (!dsarCase.subProcessorsNotified) missing.push("sub_processors");
+    if (missing.length > 0) {
+      throw new Error(
+        `Cannot close erasure case — propagation not complete on: ${missing.join(", ")}.`,
+      );
+    }
   }
 
   await db.$transaction(async (tx) => {

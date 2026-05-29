@@ -24,6 +24,7 @@ type Props = {
     | "gdpr_request"
     | "manual_flag"
     | "accuracy_failure";
+  selectedApprovalPath: "all" | "auto" | "manual";
 };
 
 export default function QuarantineFilterBar({
@@ -31,6 +32,7 @@ export default function QuarantineFilterBar({
   selectedClientId,
   selectedReviewState,
   selectedReasonCode,
+  selectedApprovalPath,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -40,6 +42,7 @@ export default function QuarantineFilterBar({
     clientId?: string;
     reviewState?: string;
     reasonCode?: string;
+    approvalPath?: string;
   }) {
     const params = new URLSearchParams();
     const clientId =
@@ -48,9 +51,12 @@ export default function QuarantineFilterBar({
       next.reviewState !== undefined ? next.reviewState : selectedReviewState;
     const reasonCode =
       next.reasonCode !== undefined ? next.reasonCode : selectedReasonCode;
+    const approvalPath =
+      next.approvalPath !== undefined ? next.approvalPath : selectedApprovalPath;
     if (clientId) params.set("clientId", clientId);
     if (reviewState && reviewState !== "pending") params.set("reviewState", reviewState);
     if (reasonCode && reasonCode !== "all") params.set("reasonCode", reasonCode);
+    if (approvalPath && approvalPath !== "all") params.set("approvalPath", approvalPath);
     const qs = params.toString();
     startTransition(() => {
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -115,6 +121,23 @@ export default function QuarantineFilterBar({
               <SelectItem value="gdpr_request">gdpr_request</SelectItem>
               <SelectItem value="manual_flag">manual_flag</SelectItem>
               <SelectItem value="accuracy_failure">accuracy_failure</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Path</Label>
+          <Select
+            value={selectedApprovalPath}
+            disabled={pending}
+            onValueChange={(v) => push({ approvalPath: v })}
+          >
+            <SelectTrigger className="h-8 w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="auto">Auto</SelectItem>
+              <SelectItem value="manual">Manual</SelectItem>
             </SelectContent>
           </Select>
         </div>

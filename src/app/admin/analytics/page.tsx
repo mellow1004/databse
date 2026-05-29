@@ -1,5 +1,4 @@
-import { AlertTriangle, Coins, CopyX, MailWarning, RefreshCcw } from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle, Coins, CopyX, MailWarning, Phone, RefreshCcw } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -14,6 +13,8 @@ import {
   getVerificationVolumeByDay,
 } from "@/services/analyticsChartsData";
 import { AnalyticsCharts } from "./AnalyticsCharts";
+import { CallingActivityCharts } from "./CallingActivityCharts";
+import { getCallingActivityMetrics } from "@/services/otto2Analytics";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,7 @@ export default async function AnalyticsPage({
     duplicateTotals,
     gate2Adherence,
     providerBudgetCost,
+    callingMetrics,
   ] = await Promise.all([
     getGateDistribution(filters),
     getProviderTrendInsufficient(filters),
@@ -113,6 +115,7 @@ export default async function AnalyticsPage({
       },
       _sum: { spentEur: true },
     }),
+    getCallingActivityMetrics({ clientId: filters.clientId }),
   ]);
   const verificationTotal = verificationTotals.reduce((s, r) => s + r._count._all, 0);
   const invalidOrBounce = verificationTotals
@@ -221,6 +224,65 @@ export default async function AnalyticsPage({
           </CardContent>
         </Card>
       </div>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold tracking-tight">Calling activity (last 30 days)</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+              <CardTitle className="text-xs font-medium text-slate-600">Total calls</CardTitle>
+              <Phone className="size-4 text-slate-400" aria-hidden />
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-2xl font-semibold tabular-nums">{callingMetrics.totalCalls}</p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-1">
+              <CardTitle className="text-xs font-medium text-slate-600">Answer rate</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-2xl font-semibold tabular-nums">
+                {callingMetrics.answerRate.toFixed(1)}%
+              </p>
+              <p className="text-xs text-slate-500">not no_answer</p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-1">
+              <CardTitle className="text-xs font-medium text-slate-600">Qualified interview rate</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-2xl font-semibold tabular-nums">
+                {callingMetrics.qualifiedInterviewRate.toFixed(1)}%
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-1">
+              <CardTitle className="text-xs font-medium text-slate-600">Callback rate</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-2xl font-semibold tabular-nums">
+                {callingMetrics.callbackRate.toFixed(1)}%
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm">
+            <CardHeader className="pb-1">
+              <CardTitle className="text-xs font-medium text-slate-600">Wrong number rate</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-2xl font-semibold tabular-nums">
+                {callingMetrics.wrongNumberRate.toFixed(1)}%
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <CallingActivityCharts byWeek={callingMetrics.byWeek} />
+        </div>
+      </section>
 
       <AnalyticsCharts
         gateDistribution={gateDistribution}

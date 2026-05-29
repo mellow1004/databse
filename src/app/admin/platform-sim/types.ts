@@ -16,6 +16,13 @@ export type RecentSimulatorEvent = {
   resourceLabel: string;
 };
 
+export type TargetingContention = {
+  otherClientCount: number;
+  otherClientNames: string[];
+  otto2Active: boolean;
+  hasContention: boolean;
+};
+
 export type TargetingContactRow = {
   contactId: string;
   fullName: string;
@@ -26,4 +33,5 @@ export type TargetingContactRow = {
   gateStatus: string;
   lastVerifiedAt: string | null;
   campaignActive: boolean;
+  contention?: TargetingContention;
 };

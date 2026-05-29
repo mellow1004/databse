@@ -1,4 +1,4 @@
-import { Archive, Building2, Lock } from "lucide-react";
+import { Archive, Building2, Lock, Phone } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { db } from "@/lib/db";
 import { getStatusVariant } from "@/lib/badge-helpers";
+import { formatGateStatus } from "@/lib/gate-labels";
 import { cn } from "@/lib/utils";
 import ConflictCard, { type ConflictCardProps } from "./ConflictCard";
 import HardDeleteButton from "./HardDeleteButton";
@@ -100,6 +101,26 @@ function badgeForSensitivity(v: string | null): string {
   return "border-transparent bg-slate-100 text-slate-700";
 }
 
+function badgeForOtto2Outcome(outcome: string): string {
+  if (outcome === "qualified_interview") return "border-transparent bg-emerald-100 text-emerald-800";
+  if (outcome === "callback") return "border-transparent bg-blue-100 text-blue-800";
+  if (outcome === "decline" || outcome === "wrong_number") {
+    return "border-transparent bg-rose-100 text-rose-800";
+  }
+  if (outcome === "no_answer" || outcome === "answer_no_interview") {
+    return "border-transparent bg-amber-100 text-amber-800";
+  }
+  return "border-transparent bg-slate-100 text-slate-700";
+}
+
+function humanizeOtto2Outcome(outcome: string): string {
+  return outcome.replaceAll("_", " ");
+}
+
+function fmtDateTime(d: Date): string {
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(d);
+}
+
 function badgeForRetention(v: string | null): string {
   if (v === "active") return "border-transparent bg-emerald-100 text-emerald-800";
   if (v === "approaching_review") return "border-transparent bg-amber-100 text-amber-800";
@@ -162,7 +183,16 @@ export default async function ContactDetailPage({
   });
   if (!contact) notFound();
 
-  const [verifications, enrichmentLogs, gateHistory, survivor, otherRoles, activeCampaignRoles] = await Promise.all([
+  const [
+    verifications,
+    enrichmentLogs,
+    gateHistory,
+    survivor,
+    otherRoles,
+    activeCampaignRoles,
+    otto2Calls,
+    pendingOtto2Callback,
+  ] = await Promise.all([
     db.verification.findMany({
       where: { contactId: id },
       orderBy: { createdAt: "desc" },
@@ -210,7 +240,18 @@ export default async function ContactDetailPage({
       orderBy: [{ clientId: "asc" }, { updatedAt: "desc" }],
       take: 100,
     }),
+    db.otto2Call.findMany({
+      where: { contactId: id },
+      orderBy: { calledAt: "desc" },
+      take: 20,
+    }),
+    db.otto2CallbackQueue.findFirst({
+      where: { contactId: id, status: "pending" },
+      orderBy: { scheduledFor: "asc" },
+    }),
   ]);
+
+  const lastOtto2Call = otto2Calls[0] ?? null;
 
   const pendingConflicts = enrichmentLogs.filter((r) => r.status === "conflict_pending");
   const pendingCards = pendingConflicts
@@ -298,7 +339,7 @@ export default async function ContactDetailPage({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={getStatusVariant(contact.gateStatus)}>
-              {contact.gateStatus}
+              {formatGateStatus(contact.gateStatus)}
             </Badge>
             {contact.campaignActive ? (
               <Badge className="border-transparent bg-blue-100 text-blue-800">
@@ -551,7 +592,9 @@ export default async function ContactDetailPage({
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Badge className={getStatusVariant(role.gateStatus)}>{role.gateStatus}</Badge>
+                      <Badge className={getStatusVariant(role.gateStatus)}>
+                        {formatGateStatus(role.gateStatus)}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))
@@ -686,6 +729,107 @@ export default async function ContactDetailPage({
 
       <section className="space-y-2">
         <h2 className="text-xl font-semibold tracking-tight">
+          Otto 2 call history{" "}
+          <span className="text-sm font-normal text-muted-foreground">
+            ({contact.totalCallAttempts} attempts)
+          </span>
+        </h2>
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Total attempts</p>
+                <p className="text-lg font-semibold tabular-nums">{contact.totalCallAttempts}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Last called</p>
+                <p className="text-sm font-medium">
+                  {lastOtto2Call ? relativeTime(lastOtto2Call.calledAt) : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Last outcome</p>
+                {lastOtto2Call ? (
+                  <Badge className={badgeForOtto2Outcome(lastOtto2Call.outcome)}>
+                    {humanizeOtto2Outcome(lastOtto2Call.outcome)}
+                  </Badge>
+                ) : (
+                  <p className="text-sm">—</p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Pending callback</p>
+                {pendingOtto2Callback ? (
+                  <p className="text-sm font-medium text-amber-800">
+                    Yes · {fmtDateTime(pendingOtto2Callback.scheduledFor)}
+                  </p>
+                ) : (
+                  <p className="text-sm">No</p>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 p-0 pt-0">
+            {pendingOtto2Callback ? (
+              <div className="mx-6 mb-4 flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <Phone className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <p>
+                  Callback scheduled for {fmtDateTime(pendingOtto2Callback.scheduledFor)}.
+                  Suppression and anonymisation are blocked until this callback resolves.
+                </p>
+              </div>
+            ) : null}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>SDR</TableHead>
+                  <TableHead>Outcome</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {otto2Calls.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      No Otto 2 calls recorded yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  otto2Calls.map((call) => (
+                    <TableRow key={call.id}>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {relativeTime(call.calledAt)}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {call.sdrUserId ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={badgeForOtto2Outcome(call.outcome)}>
+                          {humanizeOtto2Outcome(call.outcome)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {call.durationSec != null ? `${call.durationSec}s` : "—"}
+                      </TableCell>
+                      <TableCell className="max-w-xs text-sm text-slate-700">
+                        {call.notes ?? "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">
           Enrichment history{" "}
           <span className="text-sm font-normal text-muted-foreground">
             ({enrichmentLogs.length})
@@ -802,10 +946,12 @@ export default async function ContactDetailPage({
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
                           <span className="text-muted-foreground">
-                            {h.fromGate ?? "—"}
+                            {h.fromGate ? formatGateStatus(h.fromGate) : "—"}
                           </span>
                           <span className="text-muted-foreground">→</span>
-                          <Badge className={getStatusVariant(h.toGate)}>{h.toGate}</Badge>
+                          <Badge className={getStatusVariant(h.toGate)}>
+                            {formatGateStatus(h.toGate)}
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell>{h.reason}</TableCell>

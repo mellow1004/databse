@@ -8,9 +8,15 @@ type Props = {
   clientId: string;
   provider: string;
   nextCycle: number;
+  disabled?: boolean;
 };
 
-export default function DrawSampleButton({ clientId, provider, nextCycle }: Props) {
+export default function DrawSampleButton({
+  clientId,
+  provider,
+  nextCycle,
+  disabled = false,
+}: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +50,7 @@ export default function DrawSampleButton({ clientId, provider, nextCycle }: Prop
         variant="default"
         className="w-full sm:w-auto"
         onClick={onClick}
-        disabled={loading}
+        disabled={loading || disabled}
       >
         {loading ? "Drawing…" : "Draw new sample"}
       </Button>

@@ -7,9 +7,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  let body: { approvalReason?: string; regulatoryReviewNotes?: string };
+  let body: {
+    approvalReason?: string;
+    regulatoryReviewReference?: string;
+    confirmationChecked?: boolean;
+  };
   try {
-    body = (await req.json()) as { approvalReason?: string; regulatoryReviewNotes?: string };
+    body = (await req.json()) as {
+      approvalReason?: string;
+      regulatoryReviewReference?: string;
+      confirmationChecked?: boolean;
+    };
   } catch {
     return NextResponse.json(
       { error: "invalid_body", message: "Body must be valid JSON." },
@@ -41,7 +49,8 @@ export async function POST(
       suppressionId: id,
       approverId: dataOwner.id,
       approvalReason,
-      regulatoryReviewNotes: body.regulatoryReviewNotes,
+      regulatoryReviewReference: body.regulatoryReviewReference,
+      confirmationChecked: body.confirmationChecked,
     });
     return NextResponse.json({ approved: true });
   } catch (err) {

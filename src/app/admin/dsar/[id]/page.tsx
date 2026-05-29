@@ -77,6 +77,7 @@ export default async function DsarCaseDetailPage({
     dsarCase.tombstoneCreated &&
     dsarCase.aiTrainingDatasetNotified &&
     dsarCase.aiSdrPlatformNotified &&
+    dsarCase.otto2Notified &&
     dsarCase.subProcessorsNotified;
 
   return (
@@ -169,9 +170,10 @@ export default async function DsarCaseDetailPage({
             <CardTitle>Propagation status</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <div>{dsarCase.tombstoneCreated ? "✓" : "⏳"} Tombstone table</div>
-            <div>{dsarCase.aiTrainingDatasetNotified ? "✓" : "⏳"} AI training dataset</div>
-            <div>{dsarCase.aiSdrPlatformNotified ? "✓" : "⏳"} AI SDR platform & active campaigns</div>
+            <div>{dsarCase.tombstoneCreated ? "✓" : "⏳"} Tombstone</div>
+            <div>{dsarCase.aiTrainingDatasetNotified ? "✓" : "⏳"} AI training</div>
+            <div>{dsarCase.aiSdrPlatformNotified ? "✓" : "⏳"} AI SDR platform</div>
+            <div>{dsarCase.otto2Notified ? "✓" : "⏳"} Otto 2 calling lists</div>
             <div>{dsarCase.subProcessorsNotified ? "✓" : "⏳"} Sub-processors</div>
             {allConfirmed ? (
               <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-emerald-800">
@@ -195,6 +197,7 @@ export default async function DsarCaseDetailPage({
               tombstoneCreated: dsarCase.tombstoneCreated,
               aiTrainingDatasetNotified: dsarCase.aiTrainingDatasetNotified,
               aiSdrPlatformNotified: dsarCase.aiSdrPlatformNotified,
+              otto2Notified: dsarCase.otto2Notified,
               subProcessorsNotified: dsarCase.subProcessorsNotified,
             }}
           />

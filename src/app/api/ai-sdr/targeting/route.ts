@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireDataOwnerActorId } from "@/lib/data-owner-actor";
 import { buildTargetingList, type TargetingFilters } from "@/services/targeting";
+import { computeTargetingContention } from "@/services/targetingContention";
 
 export async function POST(req: Request) {
   try {
@@ -29,7 +30,23 @@ export async function POST(req: Request) {
     };
 
     const result = await buildTargetingList(filters);
-    return NextResponse.json(result);
+    const contactIds = result.contacts.map((c) => c.contactId);
+    const contention = await computeTargetingContention(body.clientId, contactIds);
+    const contacts = result.contacts.map((c) => ({
+      ...c,
+      lastVerifiedAt: c.lastVerifiedAt?.toISOString() ?? null,
+      contention: contention[c.contactId] ?? {
+        otherClientCount: 0,
+        otherClientNames: [],
+        otto2Active: false,
+        hasContention: false,
+      },
+    }));
+    return NextResponse.json({
+      totalEligible: result.totalEligible,
+      returned: result.returned,
+      contacts,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

@@ -358,6 +358,30 @@ export async function maxAccuracyCycle(
   return agg._max.cycleNumber;
 }
 
+/** Latest QA cycle accuracy for a provider (global, all clients). */
+export async function getLatestProviderAccuracy(
+  provider: string,
+): Promise<{
+  cycleNumber: number;
+  accuracyRate: number | null;
+  reviewed: number;
+  alertLevel: AccuracyStats["alertLevel"];
+} | null> {
+  const agg = await db.accuracySample.aggregate({
+    where: { provider },
+    _max: { cycleNumber: true },
+  });
+  const cycleNumber = agg._max.cycleNumber;
+  if (cycleNumber == null) return null;
+  const stats = await computeAccuracyStats(provider, cycleNumber);
+  return {
+    cycleNumber,
+    accuracyRate: stats.accuracyRate,
+    reviewed: stats.reviewed,
+    alertLevel: stats.alertLevel,
+  };
+}
+
 export async function checkProviderQualityAlerts(): Promise<
   Array<{
     provider: string;
@@ -412,4 +436,35 @@ export async function checkProviderQualityAlerts(): Promise<
       (b.alertLevel === "demotion" ? -1 : 1) ||
       a.provider.localeCompare(b.provider),
   );
+}
+
+/** Gate 2 population with a successful enrichment from `provider` (same as draw sample). */
+export async function computeAccuracyPopulationSize(
+  clientId: string,
+  provider: string,
+): Promise<number> {
+  const logs = await db.enrichmentLog.findMany({
+    where: {
+      clientId,
+      provider,
+      status: "success",
+      contactId: { not: null },
+    },
+    select: { contactId: true },
+  });
+  const contactIds = [...new Set(logs.map((r) => r.contactId).filter((id): id is string => Boolean(id)))];
+  if (contactIds.length === 0) return 0;
+  return db.contact.count({
+    where: {
+      id: { in: contactIds },
+      clientId,
+      gateStatus: "gate_2",
+      mergedIntoId: null,
+    },
+  });
+}
+
+export function computePlannedSampleSize(populationSize: number): number {
+  if (populationSize < 50) return populationSize;
+  return Math.max(50, Math.min(200, Math.ceil(populationSize * 0.01)));
 }

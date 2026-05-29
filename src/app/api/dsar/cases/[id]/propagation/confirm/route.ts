@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { confirmPropagation } from "@/services/dsar";
 
-const TARGETS = new Set(["ai_training_dataset", "ai_sdr_platform", "sub_processors"]);
+const TARGETS = new Set([
+  "ai_training_dataset",
+  "ai_sdr_platform",
+  "otto2",
+  "sub_processors",
+]);
 
 export async function POST(
   req: NextRequest,
@@ -23,7 +28,8 @@ export async function POST(
     return NextResponse.json(
       {
         error: "invalid_target",
-        message: "target must be one of ai_training_dataset, ai_sdr_platform, sub_processors.",
+        message:
+          "target must be one of ai_training_dataset, ai_sdr_platform, otto2, sub_processors.",
       },
       { status: 400 },
     );
@@ -42,7 +48,11 @@ export async function POST(
     }
     const out = await confirmPropagation(
       id,
-      body.target as "ai_training_dataset" | "ai_sdr_platform" | "sub_processors",
+      body.target as
+        | "ai_training_dataset"
+        | "ai_sdr_platform"
+        | "otto2"
+        | "sub_processors",
       dataOwner.id,
     );
     return NextResponse.json(out);

@@ -29,6 +29,7 @@ export type RefreshCycleResultJson = {
   anonymisation: {
     candidatesIdentified: number;
     anonymised: number;
+    skipped?: Array<{ contactId: string; reason: string }>;
   };
   costBreakdown: Array<{ provider: string; credits: number; eurCost: number }>;
   totalCostEur: number;

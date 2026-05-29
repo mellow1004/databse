@@ -64,6 +64,7 @@ export type RefreshCycleResult = {
   anonymisation: {
     candidatesIdentified: number;
     anonymised: number;
+    skipped: Array<{ contactId: string; reason: string }>;
   };
 
   costBreakdown: Array<{ provider: string; credits: number; eurCost: number }>;
@@ -198,7 +199,7 @@ export async function runRefreshCycle(
           creditsByProvider: {},
         },
         gates: { promoted: 0, downgraded: 0, unchanged: 0, quarantined: 0 },
-        anonymisation: { candidatesIdentified: 0, anonymised: 0 },
+        anonymisation: { candidatesIdentified: 0, anonymised: 0, skipped: [] },
         costBreakdown: [],
         totalCostEur: 0,
         pendingApprovalId: approvalCheck.pendingApprovalId,
@@ -281,6 +282,7 @@ export async function runRefreshCycle(
   let anonymisation = {
     candidatesIdentified: 0,
     anonymised: 0,
+    skipped: [] as Array<{ contactId: string; reason: string }>,
   };
 
   const progress: RefreshProgressNotes = {
@@ -720,8 +722,29 @@ export async function runRefreshCycle(
       });
 
       anonymisation.candidatesIdentified = candidateContacts.length;
-      const toAnonymise = candidateContacts.slice(0, 20);
-      anonymisation.anonymised = toAnonymise.length;
+
+      const candidateIds = candidateContacts.map((c) => c.id);
+      const pendingCallbacks =
+        candidateIds.length > 0
+          ? await db.otto2CallbackQueue.findMany({
+              where: { status: "pending", contactId: { in: candidateIds } },
+              select: { contactId: true },
+            })
+          : [];
+      const protectedContactIds = new Set(pendingCallbacks.map((r) => r.contactId));
+
+      const toAnonymise: typeof candidateContacts = [];
+      for (const c of candidateContacts) {
+        if (toAnonymise.length >= 20) break;
+        if (protectedContactIds.has(c.id)) {
+          anonymisation.skipped.push({
+            contactId: c.id,
+            reason: "active_callback_pending",
+          });
+          continue;
+        }
+        toAnonymise.push(c);
+      }
 
       if (toAnonymise.length > 0) {
         const preAnonRows = await db.contact.findMany({
@@ -779,10 +802,13 @@ export async function runRefreshCycle(
               cutoff13Months: cutoff13Months.toISOString(),
               cutoff365Days: cutoff365Days.toISOString(),
               maxCap: 20,
+              skippedActiveCallbacks: anonymisation.skipped.length,
             }),
           },
         });
       }
+
+      anonymisation.anonymised = toAnonymise.length;
     }
   } catch (e) {
     errors.push({

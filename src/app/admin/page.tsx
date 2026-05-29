@@ -8,6 +8,7 @@ import {
   Award,
   Radio,
   RefreshCcw,
+  Phone,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -132,6 +133,7 @@ export default async function AdminDashboardPage() {
     campaignActiveCount,
     staleDueForRefreshCount,
     retentionDueCount,
+    otto2ActiveCallingCount,
     auditLogs,
     latestClient,
     tombstoneCount,
@@ -168,6 +170,11 @@ export default async function AdminDashboardPage() {
           { retentionReviewDueAt: { lt: thirtyDaysFromNow } },
         ],
       },
+    }),
+    db.otto2CallbackQueue.findMany({
+      where: { status: "pending" },
+      distinct: ["contactId"],
+      select: { contactId: true },
     }),
     db.auditLog.findMany({
       orderBy: { createdAt: "desc" },
@@ -369,7 +376,7 @@ export default async function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
             <CardTitle className="text-xs font-medium text-slate-600">Gate 1</CardTitle>
@@ -430,9 +437,19 @@ export default async function AdminDashboardPage() {
             <p className="text-[11px] text-slate-500">Approaching retention review</p>
           </CardContent>
         </Card>
+        <Card className="shadow-sm">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+            <CardTitle className="text-xs font-medium text-slate-600">Active in Otto 2 calling</CardTitle>
+            <Phone className="size-3.5 text-slate-400" aria-hidden />
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-2xl font-semibold tabular-nums">{otto2ActiveCallingCount.length}</p>
+            <p className="text-[11px] text-slate-500">Pending callback queue (all clients)</p>
+          </CardContent>
+        </Card>
       </div>
       <p className="text-xs text-slate-500">
-        Gate 0 represents records below the trust floor (staging). The PRD&apos;s three-gate model applies to gates 1-3.
+        Staging represents records below the trust floor. The PRD&apos;s three-gate model applies to Gate 1–3.
       </p>
 
       <div className="grid gap-6 lg:grid-cols-5">

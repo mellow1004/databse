@@ -13,6 +13,7 @@ type Props = {
     tombstoneCreated: boolean;
     aiTrainingDatasetNotified: boolean;
     aiSdrPlatformNotified: boolean;
+    otto2Notified: boolean;
     subProcessorsNotified: boolean;
   };
 };
@@ -59,7 +60,9 @@ export default function DsarCaseActions({ caseId, caseType, canClose, propagatio
     if (out) router.refresh();
   }
 
-  async function confirmTarget(target: "ai_training_dataset" | "ai_sdr_platform" | "sub_processors") {
+  async function confirmTarget(
+    target: "ai_training_dataset" | "ai_sdr_platform" | "otto2" | "sub_processors",
+  ) {
     const out = await postJson(`/api/dsar/cases/${caseId}/propagation/confirm`, { target });
     if (out) router.refresh();
   }
@@ -146,6 +149,17 @@ export default function DsarCaseActions({ caseId, caseType, canClose, propagatio
               className="mr-2"
             >
               Confirm propagation: AI SDR platform
+            </Button>
+          ) : null}
+          {!propagation.otto2Notified ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => confirmTarget("otto2")}
+              disabled={loadingKey !== null}
+              className="mr-2"
+            >
+              Confirm propagation: Otto 2 calling lists
             </Button>
           ) : null}
           {!propagation.subProcessorsNotified ? (

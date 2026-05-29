@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   ChevronDown,
   Info,
   Loader2,
@@ -56,6 +57,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatGateStatus } from "@/lib/gate-labels";
+import { Otto2CallingTab } from "./Otto2CallingTab";
 import type {
   ActiveCampaignRow,
   RecentSimulatorEvent,
@@ -205,6 +208,7 @@ export function SimulatorClient({
   }
 
   const rows = targetingResults ?? [];
+  const contentionCount = rows.filter((r) => r.contention?.hasContention).length;
   const allSelected =
     rows.length > 0 && rows.every((r) => selectedIds.has(r.contactId));
 
@@ -395,10 +399,11 @@ export function SimulatorClient({
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-        <TabsList className="grid w-full max-w-xl grid-cols-3">
+        <TabsList className="grid w-full max-w-3xl grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="target">Build targeting list</TabsTrigger>
           <TabsTrigger value="campaign">Active campaign</TabsTrigger>
           <TabsTrigger value="events">Recent events</TabsTrigger>
+          <TabsTrigger value="otto2">Otto 2 calling</TabsTrigger>
         </TabsList>
 
         <TabsContent value="target" className="space-y-4">
@@ -527,6 +532,12 @@ export function SimulatorClient({
                   </div>
                 ) : (
                   <>
+                    {contentionCount > 0 ? (
+                      <p className="border-b px-4 py-2 text-sm text-amber-800">
+                        {contentionCount} of {rows.length} contacts also active in other client
+                        campaigns or Otto 2 calling sequences
+                      </p>
+                    ) : null}
                     <div className="max-h-[min(420px,50vh)] overflow-auto">
                       <Table>
                         <TableHeader>
@@ -543,42 +554,71 @@ export function SimulatorClient({
                             <TableHead>Gate</TableHead>
                             <TableHead>Country</TableHead>
                             <TableHead>Last verified</TableHead>
+                            <TableHead>Signals</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {rows.map((r) => (
-                            <TableRow key={r.contactId}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedIds.has(r.contactId)}
-                                  onCheckedChange={(v) =>
-                                    toggleRow(r.contactId, v === true)
-                                  }
-                                  aria-label={`Select ${r.fullName}`}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">{r.fullName}</div>
-                                <div className="text-xs text-muted-foreground break-all">
-                                  {r.email ?? "—"}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-sm">{r.companyName}</TableCell>
-                              <TableCell>
-                                <code className="text-xs">{r.gateStatus}</code>
-                              </TableCell>
-                              <TableCell className="text-sm">{r.country ?? "—"}</TableCell>
-                              <TableCell className="text-xs tabular-nums text-muted-foreground">
-                                {r.lastVerifiedAt
-                                  ? formatRelativeTime(
-                                      typeof r.lastVerifiedAt === "string"
-                                        ? r.lastVerifiedAt
-                                        : new Date(r.lastVerifiedAt).toISOString(),
-                                    )
-                                  : "—"}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {rows.map((r) => {
+                            const c = r.contention;
+                            const otherTooltip =
+                              c && c.otherClientCount > 0
+                                ? `Also active for: ${c.otherClientNames.join(", ")}`
+                                : undefined;
+                            const ottoTooltip = c?.otto2Active
+                              ? "Pending Otto 2 callback or called in the last 7 days"
+                              : undefined;
+                            return (
+                              <TableRow key={r.contactId}>
+                                <TableCell>
+                                  <Checkbox
+                                    checked={selectedIds.has(r.contactId)}
+                                    onCheckedChange={(v) =>
+                                      toggleRow(r.contactId, v === true)
+                                    }
+                                    aria-label={`Select ${r.fullName}`}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <div className="font-medium">{r.fullName}</div>
+                                  <div className="text-xs text-muted-foreground break-all">
+                                    {r.email ?? "—"}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-sm">{r.companyName}</TableCell>
+                                <TableCell>
+                                  <span className="text-xs">{formatGateStatus(r.gateStatus)}</span>
+                                </TableCell>
+                                <TableCell className="text-sm">{r.country ?? "—"}</TableCell>
+                                <TableCell className="text-xs tabular-nums text-muted-foreground">
+                                  {r.lastVerifiedAt
+                                    ? formatRelativeTime(r.lastVerifiedAt)
+                                    : "—"}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-1">
+                                    {c && c.otherClientCount > 0 ? (
+                                      <Badge
+                                        className="border-transparent bg-amber-100 text-amber-800 text-[10px]"
+                                        title={otherTooltip}
+                                      >
+                                        <AlertTriangle className="mr-0.5 size-3" aria-hidden />
+                                        Active in {c.otherClientCount} other client
+                                        {c.otherClientCount === 1 ? "" : "s"}
+                                      </Badge>
+                                    ) : null}
+                                    {c?.otto2Active ? (
+                                      <Badge
+                                        className="border-transparent bg-amber-100 text-amber-800 text-[10px]"
+                                        title={ottoTooltip}
+                                      >
+                                        Otto 2 active
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -670,7 +710,7 @@ export function SimulatorClient({
                         </TableCell>
                         <TableCell className="text-sm">{row.companyName}</TableCell>
                         <TableCell>
-                          <code className="text-xs">{row.gateStatus}</code>
+                          <span className="text-xs">{formatGateStatus(row.gateStatus)}</span>
                         </TableCell>
                         <TableCell className="text-xs tabular-nums text-muted-foreground">
                           {row.lastVerifiedAt
@@ -726,6 +766,10 @@ export function SimulatorClient({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="otto2" className="space-y-4">
+          <Otto2CallingTab clientId={clientFromUrl} />
         </TabsContent>
 
         <TabsContent value="events" className="space-y-3">

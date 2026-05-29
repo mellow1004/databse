@@ -29,6 +29,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { formatGateStatus } from "@/lib/gate-labels";
 import type {
   GateDistributionRow,
   ProviderTrendRow,
@@ -46,7 +47,7 @@ const GATE_HEX: Record<string, string> = {
 };
 
 const gateChartConfig = {
-  gate_0: { label: "Staging / Below floor", color: GATE_HEX.gate_0 },
+  gate_0: { label: "Staging", color: GATE_HEX.gate_0 },
   gate_1: { label: "Gate 1", color: GATE_HEX.gate_1 },
   gate_2: { label: "Gate 2", color: GATE_HEX.gate_2 },
   gate_3: { label: "Gate 3", color: GATE_HEX.gate_3 },
@@ -85,7 +86,7 @@ export function AnalyticsCharts({
 }: Props) {
   const gatePieData = gateDistribution.map((g) => ({
     ...g,
-    displayGate: g.gate === "gate_0" ? "Staging / Below floor" : g.gate,
+    displayGate: formatGateStatus(g.gate),
     fill: GATE_HEX[g.gate] ?? "#94a3b8",
   }));
   const gateTotal = gateDistribution.reduce((s, g) => s + g.count, 0);
@@ -95,7 +96,9 @@ export function AnalyticsCharts({
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>Gate distribution</CardTitle>
-          <CardDescription>Active contacts across the 4-gate model</CardDescription>
+          <CardDescription>
+            Active contacts (staging + Gate 1 + Gate 2 + Gate 3)
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <ChartContainer
@@ -126,16 +129,15 @@ export function AnalyticsCharts({
                   const n = row?.count ?? 0;
                   const pct =
                     gateTotal > 0 ? Math.round((n / gateTotal) * 1000) / 10 : 0;
-                  const label =
-                    value === "gate_0" ? "Staging / Below floor" : value.replace(/_/g, " ");
+                  const label = formatGateStatus(String(value));
                   return `${label} · ${n} (${pct}%)`;
                 }}
               />
             </PieChart>
           </ChartContainer>
           <p className="mt-2 text-xs text-muted-foreground">
-            Gate 0 represents records below the trust floor — not yet promoted from staging.
-            The PRD&apos;s three-gate model applies to gates 1-3 only.
+            Staging represents records below the trust floor — not yet promoted from intake.
+            The PRD&apos;s three-gate model applies to Gate 1–3 only.
           </p>
         </CardContent>
       </Card>

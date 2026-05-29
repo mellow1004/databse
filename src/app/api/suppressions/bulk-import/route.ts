@@ -3,6 +3,7 @@ import { requireDataOwnerActorId } from "@/lib/data-owner-actor";
 import { db } from "@/lib/db";
 import { checkBulkApproval } from "@/services/bulkApproval";
 import { normalizeEmail, normalizeDomain } from "@/lib/normalization";
+import { cancelOtto2CallbacksForSuppression } from "@/services/otto2";
 
 type ParsedRow = {
   target_type: string;
@@ -109,7 +110,8 @@ export async function POST(req: Request) {
               : null,
           contactId: targetType === "contact_id" ? row.target_value : null,
         };
-        await db.suppression.create({ data });
+        const created = await db.suppression.create({ data });
+        await cancelOtto2CallbacksForSuppression(created, actorUserId);
         imported += 1;
       } catch {
         rejected += 1;

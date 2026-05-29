@@ -5,6 +5,7 @@ import type {
   VerificationDayRow,
 } from "@/lib/analytics-chart-types";
 import { db } from "@/lib/db";
+import { formatGateStatus } from "@/lib/gate-labels";
 import { computeAccuracyStats } from "@/services/accuracy";
 
 const GATE_ORDER = ["gate_0", "gate_1", "gate_2", "gate_3"] as const;
@@ -16,8 +17,7 @@ export type AnalyticsFilterInput = {
 };
 
 function gateLabel(gate: string): string {
-  if (gate === "gate_0") return "Staging / Below floor";
-  return gate.replace(/_/g, " ");
+  return formatGateStatus(gate);
 }
 
 export async function getGateDistribution(filters: AnalyticsFilterInput = {}): Promise<GateDistributionRow[]> {

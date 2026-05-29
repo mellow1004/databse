@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { getStatusVariant } from "@/lib/badge-helpers";
+import { formatGateStatus } from "@/lib/gate-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -146,7 +147,11 @@ export default async function CompanyDetailPage({
                 <TableRow key={c.id}>
                   <TableCell><Link className="underline underline-offset-4" href={`/admin/contacts/${c.id}`}>{c.person.fullName}</Link></TableCell>
                   <TableCell>{c.client.name}</TableCell>
-                  <TableCell><Badge className={getStatusVariant(c.gateStatus)}>{c.gateStatus}</Badge></TableCell>
+                  <TableCell>
+                    <Badge className={getStatusVariant(c.gateStatus)}>
+                      {formatGateStatus(c.gateStatus)}
+                    </Badge>
+                  </TableCell>
                   <TableCell>{relativeTime(c.lastVerifiedAt)}</TableCell>
                 </TableRow>
               ))}

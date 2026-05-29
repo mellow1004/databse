@@ -142,6 +142,10 @@ model Contact {
   /// Raw FK column (no Prisma relation) so the trail survives deletion of the surviving record.
   mergedIntoId String?
 
+  // Phone calling (Otto 2)
+  phoneVerified     Boolean @default(false) // true if a phone Verification with status="valid" exists
+  totalCallAttempts Int     @default(0) // denormalised count of Otto2Call rows
+
   // Freshness & derived fields
   freshnessLabel      String? // "fresh" | "aging" | "stale"
   lastVerifiedAt      DateTime?
@@ -169,7 +173,42 @@ model Contact {
   @@index([mergedIntoId])
   @@index([retentionStatus])
   @@index([retentionReviewDueAt])
+  @@index([phoneVerified])
   @@map("contacts")
+}
+
+/// Outbound call outcomes from Otto 2 (calling platform integration).
+model Otto2Call {
+  id          String   @id @default(cuid())
+  contactId   String
+  clientId    String
+  sdrUserId   String? // user who placed the call (or "system")
+  outcome     String // "no_answer" | "callback" | "qualified_interview" | "decline" | "wrong_number" | "answer_no_interview"
+  durationSec Int?
+  notes       String?
+  calledAt    DateTime @default(now())
+
+  @@index([contactId, calledAt])
+  @@index([clientId])
+  @@index([outcome])
+  @@map("otto2_calls")
+}
+
+/// Scheduled follow-up calls from Otto 2 callback outcomes.
+model Otto2CallbackQueue {
+  id                String   @id @default(cuid())
+  contactId         String
+  clientId          String
+  scheduledFor      DateTime
+  status            String   @default("pending") // "pending" | "completed" | "cancelled"
+  createdFromCallId String?
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  @@index([scheduledFor])
+  @@index([contactId])
+  @@index([status])
+  @@map("otto2_callback_queue")
 }
 
 /// Many-to-many between contacts and companies with role type + date ranges.
@@ -456,7 +495,7 @@ model DsarCase {
   // Ownership
   ownerId String // Data Owner user id
 
-  // Erasure-specific propagation (P0 #2 — 4 targets must confirm)
+  // Erasure-specific propagation (P0 #2 — 5 targets must confirm)
   tombstoneCreated          Boolean   @default(false)
   tombstoneCreatedAt        DateTime?
   aiTrainingDatasetNotified Boolean   @default(false)
@@ -465,7 +504,9 @@ model DsarCase {
   aiSdrPlatformAt           DateTime?
   subProcessorsNotified     Boolean   @default(false)
   subProcessorsAt           DateTime?
-  propagationCompletedAt    DateTime? // set only when all 4 confirmed
+  otto2Notified             Boolean   @default(false)
+  otto2At                   DateTime?
+  propagationCompletedAt    DateTime? // set only when all 5 targets confirmed
 
   // Matched records (cached from search; JSON array of contact ids)
   matchedContactIds String?

@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { db } from "@/lib/db";
-import { checkProviderQualityAlerts, computeAccuracyStats } from "@/services/accuracy";
+import ProviderQualityThresholdBadges from "@/components/provider-quality/ProviderQualityThresholdBadges";
+import { checkProviderQualityAlerts, computeAccuracyStats, getLatestProviderAccuracy } from "@/services/accuracy";
 import DemoteProviderButton from "./DemoteProviderButton";
 
 export const dynamic = "force-dynamic";
@@ -90,6 +91,17 @@ export default async function ProviderGovernancePage() {
   );
   const outageByProvider = new Map(outageRows.map((r) => [r.provider, r]));
 
+  const latestQaByProvider = new Map(
+    (
+      await Promise.all(
+        PROVIDERS.map(async (provider) => ({
+          provider,
+          latest: await getLatestProviderAccuracy(provider),
+        })),
+      )
+    ).map((row) => [row.provider, row.latest]),
+  );
+
   const trendByProvider = new Map<string, Array<{ cycle: number; accuracy: number | null }>>();
   for (const provider of PROVIDERS) {
     const cyclesRaw = await db.accuracySample.findMany({
@@ -150,6 +162,7 @@ export default async function ProviderGovernancePage() {
                 <TableHead>Primary markets</TableHead>
                 <TableHead>Daily budget usage</TableHead>
                 <TableHead>Outage status</TableHead>
+                <TableHead>Latest QA accuracy</TableHead>
                 <TableHead>QA trend (last 5)</TableHead>
                 <TableHead>Fallback chain</TableHead>
               </TableRow>
@@ -160,6 +173,7 @@ export default async function ProviderGovernancePage() {
                 const budget = budgetByProvider.get(provider);
                 const outage = outageByProvider.get(provider);
                 const trend = trendByProvider.get(provider) ?? [];
+                const latestQa = latestQaByProvider.get(provider);
                 return (
                   <TableRow key={provider}>
                     <TableCell className="font-medium">{provider}</TableCell>
@@ -197,6 +211,26 @@ export default async function ProviderGovernancePage() {
                       <Badge className={outage?.outage ? "border-transparent bg-rose-100 text-rose-800" : "border-transparent bg-emerald-100 text-emerald-800"}>
                         {outage?.outage ? "Outage detected" : "Healthy"}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="space-y-2 text-xs">
+                      {latestQa?.accuracyRate != null && latestQa.reviewed >= 10 ? (
+                        <>
+                          <div className="font-semibold tabular-nums text-slate-900">
+                            {latestQa.accuracyRate.toFixed(1)}%
+                            <span className="ml-1 font-normal text-muted-foreground">
+                              (cycle {latestQa.cycleNumber})
+                            </span>
+                          </div>
+                          <ProviderQualityThresholdBadges
+                            provider={provider}
+                            cycleNumber={latestQa.cycleNumber}
+                            accuracyRate={latestQa.accuracyRate}
+                            reviewed={latestQa.reviewed}
+                          />
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Insufficient sample</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs">
                       {trend.length === 0

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cancelOtto2CallbacksForSuppression } from "@/services/otto2";
 import { db } from "@/lib/db";
 import {
   normalizeDomain,
@@ -212,6 +213,8 @@ export async function POST(req: NextRequest) {
         }),
       },
     });
+
+    await cancelOtto2CallbacksForSuppression(row, dataOwner.id);
 
     return NextResponse.json(row);
   } catch (err) {

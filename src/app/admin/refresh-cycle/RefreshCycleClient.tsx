@@ -439,7 +439,7 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
                 ? `Checkpoint ${progressMeta.latestCheckpoint.at}/${progressMeta.latestCheckpoint.total}`
                 : "Waiting for first checkpoint"}
             </p>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <p className="mb-1 text-sm font-medium">Provider call counts</p>
                 <ul className="space-y-1 text-xs text-muted-foreground">
@@ -459,6 +459,18 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
                     .slice(0, 8)
                     .map((id) => (
                       <li key={id}>{id}</li>
+                    ))}
+                </ul>
+              </div>
+              <div>
+                <p className="mb-1 text-sm font-medium">Skipped records</p>
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {(progressPayload?.progress?.progress?.skippedRecords ?? [])
+                    .slice(0, 8)
+                    .map((row) => (
+                      <li key={`${row.contactId}-${row.reason}`}>
+                        {row.contactId} — {row.reason}
+                      </li>
                     ))}
                 </ul>
               </div>
@@ -545,6 +557,13 @@ export function RefreshCycleClient({ clients, pastCycles }: Props) {
                       {latestResult.anonymisation.anonymised}
                     </p>
                     <p className="text-sm text-muted-foreground">Anonymised</p>
+                    {(latestResult.anonymisation.skipped?.length ?? 0) > 0 ? (
+                      <p className="mt-1 text-xs text-amber-700">
+                        {latestResult.anonymisation.skipped?.length ?? 0} contact
+                        {(latestResult.anonymisation.skipped?.length ?? 0) === 1 ? "" : "s"}{" "}
+                        protected by active callbacks
+                      </p>
+                    ) : null}
                   </CardContent>
                 </Card>
               ) : null}
